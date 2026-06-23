@@ -37,7 +37,7 @@ The data is public-safe by design. Student, teacher, section, and course identif
 
 ## Model Journey
 
-The model search followed the same statistical logic used in the private MS statistics work, but with an original public-safe education framing: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.
+The model search follows a disciplined workflow: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.
 
 ![Nonparametric and parametric shape discovery](../figures/shape_discovery.png)
 
