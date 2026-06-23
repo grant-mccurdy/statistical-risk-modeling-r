@@ -3,7 +3,9 @@ source(file.path("R", "model_utils.R"))
 ensure_project_dirs()
 
 required_tables <- c(
+  file.path("reports", "education_extract_profile.csv"),
   file.path("reports", "model_comparison_display.csv"),
+  file.path("reports", "parametric_family_review.csv"),
   file.path("reports", "final_metrics.csv"),
   file.path("reports", "metric_uncertainty.csv"),
   file.path("reports", "odds_ratios.csv"),
@@ -31,15 +33,17 @@ read_display_csv <- function(path, check_names = TRUE) {
   )
 }
 
-account_risk <- read.csv(
-  file.path("data", "processed", "synthetic_account_risk.csv"),
+readiness <- read.csv(
+  file.path("data", "processed", "education_readiness_risk.csv"),
   stringsAsFactors = FALSE
 )
 
+extract_profile <- read_display_csv(file.path("reports", "education_extract_profile.csv"))
 model_comparison <- read_display_csv(
   file.path("reports", "model_comparison_display.csv"),
   check_names = FALSE
 )
+family_review <- read_display_csv(file.path("reports", "parametric_family_review.csv"))
 final_metrics <- read_display_csv(file.path("reports", "final_metrics.csv"))
 metric_uncertainty <- read_display_csv(file.path("reports", "metric_uncertainty.csv"))
 odds_ratios <- read_display_csv(file.path("reports", "odds_ratios.csv"))
@@ -57,87 +61,123 @@ metric_value <- function(metric_name) {
   final_metrics$Value[final_metrics$Metric == metric_name][1]
 }
 
+clean_label <- function(x) {
+  x <- gsub("_", " ", x)
+  x <- gsub("beginning of year", "beginning-of-year", x, fixed = TRUE)
+  x <- gsub("end of year", "end-of-year", x, fixed = TRUE)
+  x <- gsub("at risk", "at-risk", x, fixed = TRUE)
+  x
+}
+
+extract_profile$Value <- clean_label(extract_profile$Value)
+names(family_review) <- c("Family", "Why tested", "Decision", "CV loss", "Holdout AUC")
+names(model_comparison) <- c(
+  "Model", "Selected", "Role", "Params", "CV loss", "CV SD", "CV AUC",
+  "Holdout loss", "Holdout AUC", "Delta"
+)
+names(metric_uncertainty) <- c("Metric", "Estimate", "95% CI")
+names(odds_ratios) <- c("Predictor", "Scale", "Odds ratio", "95% CI", "p-value")
+names(calibration) <- c("Band", "N", "Pred", "Obs", "Expected", "Cases")
+names(calibration_diagnostics) <- c("Diagnostic", "Estimate", "Interpretation")
+names(thresholds) <- c("Threshold", "Flagged", "Flagged %", "Captured", "Sens", "Spec", "PPV", "NPV")
+names(decision_economics) <- c("Threshold", "Flagged", "Captured", "Benefit", "Cost", "Net")
+names(decile_lift) <- c("Decile", "N", "Pred", "Obs", "Cases", "Lift", "Capture")
+names(subgroup_calibration) <- c("Group", "Level", "N", "Pred", "Obs", "Gap", "Cases")
+subgroup_calibration$Group <- clean_label(subgroup_calibration$Group)
+subgroup_calibration$Level <- clean_label(subgroup_calibration$Level)
+names(risk_categories) <- c("Category", "Students", "Share", "Pred", "Obs", "Cases")
+names(sensitivity) <- c("Measure", "Primary", "Sensitivity")
+names(scenario_profiles) <- c("Scenario", "Grade", "Track", "Window", "Attendance", "Readiness", "Risk", "95% CI", "Category")
+scenario_profiles$Window <- clean_label(scenario_profiles$Window)
+scenario_profiles$Attendance <- clean_label(scenario_profiles$Attendance)
+
 selected_model <- metric_value("Selected model")
 holdout_auc <- metric_value("Holdout AUC")
 holdout_log_loss <- metric_value("Holdout log loss")
 holdout_brier <- metric_value("Holdout Brier score")
 cv_log_loss <- metric_value("CV log loss")
 cv_auc <- metric_value("CV AUC")
+holdout_event_rate <- metric_value("Holdout event rate")
+shape_result <- metric_value("Shape discovery result")
 
-threshold_20 <- thresholds[thresholds$Threshold == "20%", , drop = FALSE]
-if (nrow(threshold_20) == 0) {
-  threshold_20 <- thresholds[1, , drop = FALSE]
+threshold_50 <- thresholds[thresholds$Threshold == "50%", , drop = FALSE]
+if (nrow(threshold_50) == 0) {
+  threshold_50 <- thresholds[which.min(abs(as.numeric(gsub("%", "", thresholds$Threshold)) - 50)), , drop = FALSE]
 }
-top_two_capture <- decile_lift$Cumulative_capture[decile_lift$Decile == 2][1]
+
+top_two_capture <- decile_lift$Capture[decile_lift$Decile == 2][1]
 top_decile_lift <- decile_lift$Lift[decile_lift$Decile == 1][1]
 best_economic <- decision_economics[
-  which.max(as.numeric(gsub("[$, ]", "", decision_economics$Net_value))),
+  which.max(as.numeric(gsub("[$, ]", "", decision_economics$Net))),
   ,
   drop = FALSE
 ]
 
-event_rate <- mean(account_risk$escalation_flag)
-missing_training_rate <- mean(is.na(account_risk$training_completion_rate))
-
 report_lines <- c(
-  "# Statistical Risk Modeling in R",
+  "# Education Readiness Risk Modeling in R",
   "",
-  "## Executive Summary",
+  "## Recommendation",
   "",
   paste0(
-    "This public-safe project models the probability that a synthetic B2B ",
-    "account will require escalation review in the next quarter. The selected ",
-    "interpretable GLM is **", selected_model, "**, chosen using repeated ",
-    "stratified cross-validation and checked on a holdout set."
+    "Use **", selected_model,
+    "** as an interpretable next-assessment support-risk model for public-safe education planning. ",
+    "The model should rank students for human review and support planning; it should not automate academic decisions."
   ),
   "",
   paste0(
-    "On the holdout set, the model achieved AUC **", holdout_auc,
+    "The selected model achieved holdout AUC **", holdout_auc,
     "**, log loss **", holdout_log_loss, "**, and Brier score **",
-    holdout_brier, "**. Cross-validation produced log loss **", cv_log_loss,
-    "** and AUC **", cv_auc, "** for the selected model."
+    holdout_brier, "**. Repeated cross-validation produced log loss **",
+    cv_log_loss, "** and AUC **", cv_auc, "**."
   ),
   "",
   paste0(
-    "At a ", threshold_20$Threshold[1], " review threshold, the workflow flags ",
-    threshold_20$Flagged[1], " holdout accounts (",
-    threshold_20$Flagged_share[1], "), captures ",
-    threshold_20$Events_captured[1], " observed escalations, and produces PPV ",
-    threshold_20$PPV[1], ". This threshold is a planning option, not a final ",
-    "policy: review capacity and intervention cost should set the operating point."
+    "At a ", threshold_50$Threshold[1], " support-review threshold, the workflow flags ",
+    threshold_50$Flagged[1], " holdout student transitions (",
+    threshold_50$`Flagged %`[1], "), captures ",
+    threshold_50$Captured[1], " observed support-risk cases, and produces PPV ",
+    threshold_50$PPV[1], ". This is an operating example; capacity and intervention policy should set the final threshold."
   ),
   "",
   paste0(
-    "The ranking view is stronger than a threshold alone: the highest-risk decile ",
-    "has ", top_decile_lift, " lift over the base event rate, and the top two ",
-    "deciles capture ", top_two_capture, " of observed escalations. Under the ",
-    "illustrative economics assumptions documented below, the best tested ",
-    "threshold is ", best_economic$Threshold[1], " with net value ",
-    best_economic$Net_value[1], "."
+    "The ranking view is valuable even without a single cutoff: the highest-risk decile has ",
+    top_decile_lift, " lift over the base rate, and the top two deciles capture ",
+    top_two_capture, " of observed support-risk cases."
   ),
   "",
-  "## Data Overview",
+  "## Direct Answers",
   "",
-  paste0(
-    "The dataset contains ", format(nrow(account_risk), big.mark = ","),
-    " synthetic account records. The generated escalation rate is ",
-    format_pct(event_rate), ", and ", format_pct(missing_training_rate),
-    " of accounts have missing training-completion values."
-  ),
+  paste0("1. The primary modeled outcome is next-window support risk, defined as a next assessment score below 50 or next-window nonparticipation. The holdout event rate is ", holdout_event_rate, "."),
+  paste0("2. The best operating model is **", selected_model, "**, selected from interpretable GLM candidates after comparing nonlinear and benchmark model families."),
+  paste0("3. The mathematical discovery step matters: ", shape_result),
+  "4. The model is strongest as a prioritization tool. Thresholds convert probabilities into workload, missed-risk, and precision tradeoffs.",
+  "5. The analysis is public-safe: it uses simulated identifiers and generalized assessment behavior, and excludes private prompts, exams, real student-identifiable records, credentials, and private source documents.",
   "",
-  "Predictors include account segment, region, contract value, tenure, product usage, active-seat ratio, training completion, support tickets, response time, prior incidents, and implementation complexity. No real customer, student, patient, credential, or private course data is used.",
+  "## Data Audit",
+  "",
+  "The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict support risk at the next assessment.",
+  "",
+  markdown_table(extract_profile),
+  "",
+  "The data is public-safe by design. Student, teacher, section, and course identifiers are simulated labels; score/readiness behavior is generalized from a bootstrapped assessment workflow and should not be treated as a real student-record extract.",
   "",
   "## Model Journey",
   "",
-  "Candidate logistic models were compared with repeated stratified 5-fold cross-validation on the training split. Log loss is the primary criterion because the business problem needs calibrated probabilities, not only rank ordering. A spline benchmark is included as a flexible model-family check, but the operating model is selected from interpretable GLM candidates.",
+  "The model search followed the same statistical logic used in the private MS statistics work, but with an original public-safe education framing: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.",
+  "",
+  "![Nonparametric and parametric shape discovery](../figures/shape_discovery.png)",
+  "",
+  markdown_table(family_review),
+  "",
+  "Candidate logistic models were then compared with repeated stratified 5-fold cross-validation on the training split. Log loss is the primary criterion because a support-prioritization workflow needs useful probabilities, not only rank ordering.",
   "",
   markdown_table(model_comparison),
   "",
   "![Candidate model comparison](../figures/model_comparison.png)",
   "",
-  "The selected model uses a one-standard-error rule: pick the simplest model whose repeated-CV log loss is statistically close to the best candidate. This keeps the model easier to explain when extra terms do not materially improve probability quality.",
+  "The selection rule favors the simplest non-benchmark model within one standard error of the best repeated-CV log loss. That rule protects the portfolio story from choosing a visually impressive model that does not materially improve validated probability quality.",
   "",
-  "## Validation Metrics",
+  "## Final Model",
   "",
   markdown_table(final_metrics),
   "",
@@ -145,15 +185,29 @@ report_lines <- c(
   "",
   markdown_table(metric_uncertainty),
   "",
-  "## Coefficient Interpretation",
-  "",
-  "The table reports adjusted odds ratios for the selected model. Continuous predictors are scaled to business-readable increments where useful.",
+  "The adjusted odds ratios below translate the selected GLM into stakeholder-readable effects.",
   "",
   markdown_table(odds_ratios),
   "",
-  "## Diagnostics",
+  "## Probability Scale",
   "",
-  "ROC checks ranking quality, while calibration checks whether predicted probabilities are on the right scale across risk bands.",
+  "Risk categories provide a bridge between calibrated probabilities and support workflows.",
+  "",
+  markdown_table(risk_categories),
+  "",
+  "A threshold turns probabilities into a work queue. Lower thresholds catch more support-risk cases but create more reviews; higher thresholds focus capacity but miss more students.",
+  "",
+  "![Threshold tradeoffs](../figures/threshold_tradeoff.png)",
+  "",
+  markdown_table(thresholds),
+  "",
+  "The table below uses illustrative support-planning economics to show how a threshold can be chosen from capacity and intervention assumptions. These values are scenario assumptions, not claims about a real school system.",
+  "",
+  markdown_table(decision_economics),
+  "",
+  "## Model Checks",
+  "",
+  "ROC checks ranking quality. Calibration checks whether predicted probabilities are on the right scale across ordered risk bands.",
   "",
   "![ROC and calibration diagnostics](../figures/roc_calibration.png)",
   "",
@@ -161,37 +215,19 @@ report_lines <- c(
   "",
   markdown_table(calibration_diagnostics),
   "",
-  "Segment and implementation-complexity calibration checks help identify where monitoring should continue after deployment.",
+  "Subgroup calibration checks show where monitoring would matter before operational use. The table reports groups with at least 25 holdout records.",
   "",
   markdown_table(subgroup_calibration),
   "",
-  "## Threshold Interpretation",
-  "",
-  "A threshold turns probabilities into an operating workflow. Lower thresholds catch more events but increase review burden; higher thresholds concentrate risk but miss more events.",
-  "",
-  "![Threshold tradeoffs](../figures/threshold_tradeoff.png)",
-  "",
-  markdown_table(thresholds),
-  "",
-  "The table below translates the threshold choices into an illustrative operating economics frame. Assumptions: $750 review cost per flagged account, $12,000 avoided escalation cost, and 55% intervention effectiveness for captured events. These are scenario assumptions, not claims about a real business.",
-  "",
-  markdown_table(decision_economics),
-  "",
-  "## Lift and Prioritization",
-  "",
-  "A ranked queue is often more useful than a single classification cutoff. The lift table shows how much event concentration appears in each predicted-risk decile.",
+  "A ranked queue is often more useful than a single classification cutoff. The lift chart shows how concentrated support-risk cases are in the highest predicted-risk deciles.",
   "",
   "![Lift by predicted risk decile](../figures/lift_chart.png)",
   "",
   markdown_table(decile_lift),
   "",
-  "Risk categories provide an executive-friendly bridge between probabilities and action queues.",
+  "## Sensitivity Check",
   "",
-  markdown_table(risk_categories),
-  "",
-  "## Sensitivity Analysis",
-  "",
-  "The primary model imputes missing training completion with segment medians and includes a missingness indicator. The sensitivity model uses a conservative assumption: missing training completion is treated as zero. This tests whether the operating story depends on a favorable missing-data assumption.",
+  "The sensitivity analysis lowers the support-risk score cut point from 50 to 45 and refits the selected model family. This tests whether the prioritization story depends on one particular threshold definition.",
   "",
   "![Sensitivity analysis](../figures/sensitivity_analysis.png)",
   "",
@@ -199,28 +235,22 @@ report_lines <- c(
   "",
   "## Scenario Profiles",
   "",
-  "Scenario profiles translate the model into concrete account-review examples with probability intervals. These are synthetic profiles used for communication and model interpretation.",
+  "Scenario profiles translate the model into concrete, public-safe support-planning examples with probability intervals.",
   "",
-  "![Scenario risk curves](../figures/scenario_usage_curves.png)",
+  "![Scenario readiness risk curves](../figures/scenario_readiness_curves.png)",
   "",
   markdown_table(scenario_profiles),
   "",
-  "## Decision-Support Implications",
+  "## Bottom Line",
   "",
-  "- Use predicted risk to prioritize human account review, not to automate account decisions.",
-  "- Choose the review threshold based on available review capacity, expected intervention cost, and tolerance for missed escalations.",
-  "- Monitor calibration by segment and implementation complexity before treating risk bands as stable operating categories.",
-  "- Refit and recalibrate the model when product usage, support operations, or customer mix materially changes.",
+  "- Use the model to prioritize human review and early support planning, not to automate student-level decisions.",
+  "- Keep the piecewise readiness shape because it captures the discovered nonlinear risk pattern while staying easier to explain than a flexible spline.",
+  "- Choose operating thresholds from review capacity, support cost, and tolerance for missed support-risk cases.",
+  "- Monitor calibration by course track, assessment window, and attendance group before treating risk categories as stable operating labels.",
   "",
   "## Reproducibility",
   "",
-  "Rebuild the full evidence packet with:",
-  "",
-  "```bash",
-  "make all",
-  "```",
-  "",
-  "The build uses base R only and does not require package installation, network access, credentials, or private data.",
+  "Rebuild the full evidence packet with `make all`. The core pipeline uses base R, the included public-safe extract, and no credentials, private files, or network access.",
   "",
   "## Public-Safety Statement",
   "",
@@ -230,24 +260,26 @@ report_lines <- c(
 writeLines(report_lines, file.path("reports", "statistical_risk_modeling_report.md"))
 
 executive_lines <- c(
-  "# Executive Brief: Statistical Risk Modeling in R",
+  "# Executive Brief: Education Readiness Risk Modeling",
   "",
-  paste0("**Recommendation:** use the **", selected_model, "** as an interpretable account-review prioritization model."),
+  paste0("**Recommendation:** use the **", selected_model, "** to rank public-safe assessment transitions for human support review."),
   "",
   paste0("**Validation:** holdout AUC ", holdout_auc, ", log loss ", holdout_log_loss, ", Brier score ", holdout_brier, "."),
   "",
-  paste0("**Prioritization value:** top decile lift is ", top_decile_lift, "; top two deciles capture ", top_two_capture, " of observed escalations."),
+  paste0("**Model discovery:** ", shape_result),
   "",
-  paste0("**Operating option:** at the ", threshold_20$Threshold[1], " threshold, the model flags ", threshold_20$Flagged[1], " accounts and captures ", threshold_20$Events_captured[1], " observed escalations."),
+  paste0("**Prioritization value:** top decile lift is ", top_decile_lift, "; top two deciles capture ", top_two_capture, " of observed support-risk cases."),
   "",
-  paste0("**Illustrative economics:** strongest tested threshold is ", best_economic$Threshold[1], " with net value ", best_economic$Net_value[1], " under documented assumptions."),
+  paste0("**Operating option:** at the ", threshold_50$Threshold[1], " threshold, the model flags ", threshold_50$Flagged[1], " holdout transitions and captures ", threshold_50$Captured[1], " support-risk cases."),
+  "",
+  paste0("**Illustrative planning value:** strongest tested threshold is ", best_economic$Threshold[1], " with net value ", best_economic$Net[1], " under documented assumptions."),
   "",
   "## Decision Notes",
   "",
-  "- Use the model to rank accounts for human review rather than automate account decisions.",
-  "- Pick thresholds from capacity and intervention economics, not from AUC alone.",
-  "- Monitor segment-level calibration before adopting risk categories as stable operating labels.",
-  "- Treat the spline benchmark as a model-family stress test; it did not justify replacing the interpretable GLM."
+  "- Use the model as a review-prioritization layer, not an automated academic decision system.",
+  "- Pick thresholds from support capacity and missed-risk tolerance, not from AUC alone.",
+  "- Monitor calibration by course track, assessment window, and attendance group.",
+  "- Treat flexible spline and periodic terms as benchmark checks; they do not replace the interpretable operating model unless validation materially improves."
 )
 
 writeLines(executive_lines, file.path("reports", "executive_brief.md"))
@@ -257,19 +289,19 @@ model_card_lines <- c(
   "",
   "## Intended Use",
   "",
-  "Prioritize synthetic B2B accounts for human escalation-review planning in a public-safe portfolio project.",
+  "Prioritize public-safe assessment transitions for human support-review planning in a public-safe portfolio project.",
   "",
   "## Not Intended For",
   "",
-  "Automated customer decisions, real account scoring, credit decisions, employment decisions, clinical decisions, or use with private data without separate validation.",
+  "Automated academic decisions, real student intervention assignment, grading, discipline, admissions, employment, clinical decisions, or use with private data without separate validation and governance.",
   "",
   "## Data",
   "",
-  paste0("Synthetic account-risk records generated locally with ", format(nrow(account_risk), big.mark = ","), " rows and no private source data."),
+  paste0("Public-safe education assessment records with ", format(nrow(readiness), big.mark = ","), " modeled transitions, simulated identifiers, generalized score/readiness behavior, and no real student-identifiable records."),
   "",
   "## Model",
   "",
-  paste0("Selected model: ", selected_model, ". Candidate models include baseline, usage, support, full operating, interaction, and spline benchmark specifications."),
+  paste0("Selected model: ", selected_model, ". Candidate families include context-only, linear readiness, polynomial readiness, piecewise readiness, periodic benchmark, and spline benchmark specifications."),
   "",
   "## Performance",
   "",
@@ -281,13 +313,13 @@ model_card_lines <- c(
   "",
   "## Monitoring Recommendations",
   "",
-  "- Track calibration by segment and implementation complexity.",
-  "- Recheck threshold economics when review staffing, support processes, or escalation cost assumptions change.",
-  "- Refit the model if usage distributions or support-ticket patterns drift materially.",
+  "- Track calibration by course track, assessment window, and attendance group.",
+  "- Recheck thresholds when support capacity or readiness definitions change.",
+  "- Refit the model if the assessment sequence, attendance process, or student mix materially changes.",
   "",
   "## Public-Safety Boundary",
   "",
-  "No private coursework prompts, raw source datasets, credentials, student records, patient records, or customer records are included."
+  "No private coursework prompts, raw private source datasets, credentials, real student records, patient records, or customer records are included."
 )
 
 writeLines(model_card_lines, file.path("docs", "model-card.md"))

@@ -1,5 +1,5 @@
-"Risk_category","Accounts","Share","Mean_predicted","Observed_rate","Observed_events"
-"Monitor",133,"47.5%","5.0%","9.8%",13
-"Watch",70,"25.0%","14.2%","10.0%",7
-"Review",39,"13.9%","26.2%","30.8%",12
-"Priority",38,"13.6%","52.9%","42.1%",16
+"Risk_category","Students","Share","Mean_predicted","Observed_rate","Observed_risks"
+"Monitor",298,"44.7%","11.0%","11.1%",33
+"Watch",42,"6.3%","41.1%","38.1%",16
+"Review",43,"6.5%","56.4%","72.1%",31
+"Priority",283,"42.5%","92.5%","94.3%",267

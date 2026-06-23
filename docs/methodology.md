@@ -2,84 +2,71 @@
 
 ## Analytical Question
 
-Which accounts are most likely to require escalation review in the next
-quarter, and how should a business team interpret risk thresholds when review
-capacity is limited?
+Which public-safe assessment transitions are most likely to require support
+review at the next assessment window, and how should a support team translate
+predicted probabilities into review thresholds?
 
-The project treats the model as a decision-support tool, not an automated
-decision system. Predictions rank accounts for human review and planning.
+The project treats the model as decision support. Predictions rank public-safe
+assessment transitions for human review and planning; they are not automated
+academic decisions.
 
-## Synthetic Dataset
+## Public-Safe Education Extract
 
-The data generator creates account-level records with realistic business-risk
-signals:
+The analysis starts from a public-safe assessment extract with one row per
+assessment window. Identifiers and institutional context are simulated, while
+score/readiness behavior is generalized from a bootstrapped assessment workflow.
+The modeling table converts consecutive assessment windows into prediction
+records: current-window information predicts whether the next window crosses
+the support-risk definition.
 
-- Contract value and tenure
-- Customer segment and region
-- Product usage and active-seat ratio
-- Training completion
-- Support ticket load and response time
-- Prior incident history
-- Implementation complexity
+The primary binary outcome is `support_risk_next`, defined as a next assessment
+score below 50 or next-window nonparticipation. A sensitivity outcome lowers
+the score cut point to 45.
 
-The binary target, `escalation_flag`, is generated from a known logistic data
-generating process. The true generating probability is not included in the
-analysis dataset, so the modeling workflow behaves like a normal analyst
-project.
+Predictors include:
 
-## Model Candidates
+- Current readiness
+- Current assessment window
+- Course track
+- Grade level
+- Attendance category and attendance probability
+- Current assessment participation
+- Assessment sequence timing
 
-The analysis compares several logistic regression candidates:
+## Model Discovery
 
-- Baseline exposure model
-- Usage behavior model
-- Support load model
-- Full operating model
-- Full model with a usage-by-support interaction
-- Spline operating benchmark
+The workflow separates shape discovery from model selection.
 
-The selection criterion is repeated stratified cross-validation log loss on the
-training set. AUC and Brier score are reported as secondary validation metrics.
-The selected model is then evaluated on a holdout set.
+First, binned risk rates and kernel smooths inspect the relationship between
+current readiness and next-window support risk. This identifies whether a simple
+linear probability shape is adequate or whether the curve has a threshold-like
+or nonlinear form.
 
-The spline benchmark is included as a flexible model-family check. It tests
-whether nonlinear usage, seat-activation, and support-response patterns improve
-validated probability quality enough to justify less direct interpretation. The
-operating model is selected from interpretable GLM candidates so the final
-recommendation can be communicated through odds ratios, risk categories, and
-scenario profiles.
+Second, candidate parametric logistic models are compared:
 
-## Metrics
+- Context baseline
+- Linear readiness
+- Quadratic readiness
+- Cubic polynomial readiness
+- Piecewise readiness
+- Periodic context benchmark
+- Spline readiness benchmark
 
-- **Log loss** measures probability quality and heavily penalizes confident
-  wrong predictions.
-- **AUC** measures ranking quality across all thresholds.
-- **Brier score** measures squared probability error.
-- **Calibration** compares predicted risk to observed event rates across risk
-  bands.
-- **Lift** measures how strongly the model concentrates events in the top-ranked
-  account groups.
-- **Bootstrap intervals** provide practical uncertainty ranges around holdout
-  metrics.
+The polynomial, periodic, and spline families are included to test whether a
+more flexible shape materially improves validated probability quality. The
+final operating model is selected from interpretable GLM candidates unless a
+benchmark clearly earns its added complexity.
 
-## Interpretation
+## Validation
 
-The report translates model coefficients into odds ratios and explains each
-term on a business-friendly scale. It also includes operating-characteristic
-tables for candidate review thresholds so stakeholders can see the tradeoff
-between workload, sensitivity, specificity, and precision.
+Model comparison uses repeated stratified 5-fold cross-validation on the
+training split. Log loss is the primary metric because the workflow needs
+probabilities that are useful on the risk scale. AUC and Brier score are
+reported as secondary metrics.
 
-The project also includes scenario profiles with probability confidence bands.
-These translate the model into concrete account-review examples without using
-real customers or private data.
-
-## Sensitivity Analysis
-
-The primary preprocessing strategy imputes missing training completion using
-segment medians and adds a missingness indicator. The sensitivity check uses a
-more conservative assumption: missing training completion is treated as zero.
-The report compares metrics, risk-category movement, and prediction differences
-under this alternate assumption.
+The selected model is then evaluated on a holdout split. Bootstrap intervals
+provide practical uncertainty ranges around holdout log loss, Brier score, and
+AUC.
 
 ## Diagnostics
 
@@ -89,8 +76,14 @@ The diagnostic layer includes:
 - Calibration table and calibration plot
 - Calibration intercept and slope
 - Bootstrap metric intervals
-- Decile lift and cumulative event capture
+- Decile lift and cumulative support-risk capture
+- Subgroup calibration by course track, assessment window, and attendance group
 - Threshold operating table
-- Illustrative decision economics table
-- Segment-level calibration review
-- Sensitivity analysis for missing-data handling
+- Sensitivity analysis for the alternate support-risk definition
+
+## Interpretation
+
+The report translates model coefficients into odds ratios and uses scenario
+profiles to show how predicted risk changes across readiness levels. Threshold
+tables convert probabilities into review workload, sensitivity, specificity,
+precision, and missed-risk tradeoffs.

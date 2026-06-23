@@ -18,7 +18,10 @@ raw_files <- list.files(
   no.. = TRUE
 )
 
-allowed_raw <- file.path("data", "raw", "README.md")
+allowed_raw <- c(
+  file.path("data", "raw", "README.md"),
+  file.path("data", "raw", "synthetic_education_assessment_long.csv")
+)
 raw_violations <- setdiff(raw_files, allowed_raw)
 
 prohibited_extensions <- c("\\.docx$", "\\.pdf$", "\\.pptx$", "\\.xlsx$")
@@ -31,7 +34,7 @@ prohibited_binary_files <- setdiff(prohibited_binary_files, allowed_binary_files
 text_extensions <- paste(
   c(
     "\\.R$", "\\.Rmd$", "\\.md$", "\\.txt$", "\\.csv$", "\\.json$",
-    "Makefile$", "LICENSE$"
+    "\\.yml$", "\\.yaml$", "Makefile$", "LICENSE$"
   ),
   collapse = "|"
 )

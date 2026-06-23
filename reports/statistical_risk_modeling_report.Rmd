@@ -1,5 +1,5 @@
 ---
-title: "Statistical Risk Modeling in R"
+title: "Education Readiness Risk Modeling in R"
 output:
   github_document: default
   pdf_document:
@@ -7,12 +7,12 @@ output:
 geometry: margin=0.8in
 ---
 
-```{r build, include=FALSE}
+```{r build, include=FALSE, message=FALSE, warning=FALSE}
 source(file.path("R", "generate_synthetic_data.R"))
 source(file.path("R", "fit_risk_models.R"))
 ```
 
-```{r report, echo=FALSE, results='asis'}
+```{r report, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
 source(file.path("R", "render_markdown_report.R"))
 cat(readLines(file.path("reports", "statistical_risk_modeling_report.md")), sep = "\n")
 ```

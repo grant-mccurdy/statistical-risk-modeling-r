@@ -9,21 +9,26 @@ The project intentionally excludes:
 
 - Professor prompts, exams, rubrics, syllabi, lecture transcripts, and private
   course documents
-- Raw private coursework files and source datasets
+- Raw private coursework files and private source datasets
 - Real student, patient, school-private, customer, credential, or personal data
 - Private local paths, tokens, API keys, and credentials
 - Copyrighted source documents that are not licensed for redistribution
 
 ## Public-Safe Replacement
 
-The analysis uses synthetic B2B account-risk records generated from transparent
-simulation rules. The dataset is not calibrated to a private person, school,
-patient cohort, employer, or customer base.
+The analysis uses public-safe education assessment records. The data contains
+simulated student, teacher, course, section, attendance, assessment-window, and
+readiness fields. Score and readiness behavior is generalized from a
+bootstrapped assessment workflow, but the repository does not include real
+student-identifiable data, private rosters, raw LMS exports, exact source rows,
+or private assessment artifacts.
 
-The business framing is original: predicting whether an account should receive
-an escalation review in the next quarter. The private source work was used only
-to identify transferable methods such as GLM model comparison, validation,
-calibration, threshold interpretation, and sensitivity analysis.
+The public framing is original: predicting whether a public-safe assessment
+transition should receive human support review at the next assessment window.
+Private statistics coursework was used only to identify transferable methods
+such as model-family comparison, GLM validation, calibration, threshold
+interpretation, diagnostics, sensitivity analysis, and executive-facing
+communication.
 
 ## Validation
 
@@ -34,5 +39,6 @@ make validate
 ```
 
 The validation script checks that the project does not contain known private
-source identifiers, prohibited source document formats, or raw files in
-`data/raw/` beyond this README.
+source identifiers, prohibited source document formats, or unexpected raw files.
+The only permitted raw data file is the public-safe education assessment extract
+documented in `data/raw/README.md`.

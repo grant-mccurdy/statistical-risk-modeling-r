@@ -1,220 +1,248 @@
-# Statistical Risk Modeling in R
+# Education Readiness Risk Modeling in R
 
-## Executive Summary
+## Recommendation
 
-This public-safe project models the probability that a synthetic B2B account will require escalation review in the next quarter. The selected interpretable GLM is **Full operating model**, chosen using repeated stratified cross-validation and checked on a holdout set.
+Use **Piecewise readiness** as an interpretable next-assessment support-risk model for public-safe education planning. The model should rank students for human review and support planning; it should not automate academic decisions.
 
-On the holdout set, the model achieved AUC **0.719**, log loss **0.422**, and Brier score **0.129**. Cross-validation produced log loss **0.366** and AUC **0.797** for the selected model.
+The selected model achieved holdout AUC **0.938**, log loss **0.309**, and Brier score **0.093**. Repeated cross-validation produced log loss **0.318** and AUC **0.935**.
 
-At a 20% review threshold, the workflow flags 77 holdout accounts (27.5%), captures 28 of 48 observed escalations, and produces PPV 36.4%. This threshold is a planning option, not a final policy: review capacity and intervention cost should set the operating point.
+At a 50% support-review threshold, the workflow flags 326 holdout student transitions (48.9%), captures 298 of 347 observed support-risk cases, and produces PPV 91.4%. This is an operating example; capacity and intervention policy should set the final threshold.
 
-The ranking view is stronger than a threshold alone: the highest-risk decile has 2.71x lift over the base event rate, and the top two deciles capture 50.0% of observed escalations. Under the illustrative economics assumptions documented below, the best tested threshold is 15% with net value $127,350.
+The ranking view is valuable even without a single cutoff: the highest-risk decile has 1.92x lift over the base rate, and the top two deciles capture 38.3% of observed support-risk cases.
 
-## Data Overview
+## Direct Answers
 
-The dataset contains 1,400 synthetic account records. The generated escalation rate is 17.1%, and 10.8% of accounts have missing training-completion values.
+1. The primary modeled outcome is next-window support risk, defined as a next assessment score below 50 or next-window nonparticipation. The holdout event rate is 52.1%.
+2. The best operating model is **Piecewise readiness**, selected from interpretable GLM candidates after comparing nonlinear and benchmark model families.
+3. The mathematical discovery step matters: Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks.
+4. The model is strongest as a prioritization tool. Thresholds convert probabilities into workload, missed-risk, and precision tradeoffs.
+5. The analysis is public-safe: it uses simulated identifiers and generalized assessment behavior, and excludes private prompts, exams, real student-identifiable records, credentials, and private source documents.
 
-Predictors include account segment, region, contract value, tenure, product usage, active-seat ratio, training completion, support tickets, response time, prior incidents, and implementation complexity. No real customer, student, patient, credential, or private course data is used.
+## Data Audit
+
+The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict support risk at the next assessment.
+
+| Measure | Value |
+| --- | --- |
+| Raw assessment rows | 4,018 |
+| Modeled transitions | 3,322 |
+| Unique public-safe student IDs | 696 |
+| Support-risk event rate | 52.1% |
+| Current nonparticipation rate | 7.2% |
+| Next-window nonparticipation rate | 7.2% |
+| Median current readiness | 47.7 |
+| Included assessment windows | beginning-of-year, end-of-year |
+
+The data is public-safe by design. Student, teacher, section, and course identifiers are simulated labels; score/readiness behavior is generalized from a bootstrapped assessment workflow and should not be treated as a real student-record extract.
 
 ## Model Journey
 
-Candidate logistic models were compared with repeated stratified 5-fold cross-validation on the training split. Log loss is the primary criterion because the business problem needs calibrated probabilities, not only rank ordering. A spline benchmark is included as a flexible model-family check, but the operating model is selected from interpretable GLM candidates.
+The model search followed the same statistical logic used in the private MS statistics work, but with an original public-safe education framing: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.
 
-| Model | Selected | Role | Parameters | CV_log_loss | CV_log_loss_SD | CV_AUC | Holdout_log_loss | Holdout_AUC | Delta_CV_log_loss |
+![Nonparametric and parametric shape discovery](../figures/shape_discovery.png)
+
+| Family | Why tested | Decision | CV loss | Holdout AUC |
+| --- | --- | --- | --- | --- |
+| Context baseline | Tests whether demographic and operating context alone is enough. | Rejected; validation is much weaker without readiness. | 0.643 | 0.673 |
+| Linear readiness | Adds the main readiness signal with a simple monotone probability shape. | Rejected; ranking is strong but probability quality is worse. | 0.340 | 0.933 |
+| Quadratic readiness | Tests whether risk accelerates near low readiness values. | Rejected; close to selected model, but less directly aligned with the discovered threshold shape. | 0.319 | 0.937 |
+| Cubic polynomial readiness | Checks whether a more flexible polynomial improves fit enough to justify instability risk. | Rejected; added polynomial curvature without improving the operating story. | 0.318 | 0.936 |
+| Piecewise readiness | Uses the smooth shape discovery to encode separate readiness regions. | Selected as the operating model. | 0.318 | 0.938 |
+| Periodic context benchmark | Tests recurring assessment-window structure without making periodicity the headline. | Benchmark only; periodic terms did not justify replacing the operating model. | 0.320 | 0.937 |
+| Spline readiness benchmark | Flexible nonlinear benchmark for the readiness curve. | Benchmark only; used to test whether flexible curvature changes the conclusion. | 0.318 | 0.937 |
+
+Candidate logistic models were then compared with repeated stratified 5-fold cross-validation on the training split. Log loss is the primary criterion because a support-prioritization workflow needs useful probabilities, not only rank ordering.
+
+| Model | Selected | Role | Params | CV loss | CV SD | CV AUC | Holdout loss | Holdout AUC | Delta |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Full operating model | Yes | Selection candidate | 15 | 0.366 | 0.005 | 0.797 | 0.422 | 0.719 | 0.000 |
-| Full model with interaction |  | Selection candidate | 16 | 0.367 | 0.005 | 0.798 | 0.422 | 0.721 | 0.000 |
-| Spline operating benchmark |  | Benchmark | 21 | 0.371 | 0.005 | 0.792 | 0.424 | 0.717 | 0.004 |
-| Support load |  | Selection candidate | 9 | 0.377 | 0.003 | 0.781 | 0.442 | 0.674 | 0.011 |
-| Usage behavior |  | Selection candidate | 10 | 0.395 | 0.005 | 0.756 | 0.435 | 0.686 | 0.028 |
-| Baseline exposure |  | Selection candidate | 6 | 0.447 | 0.003 | 0.619 | 0.456 | 0.576 | 0.081 |
+| Piecewise readiness | Yes | Selection candidate | 15 | 0.318 | 0.001 | 0.935 | 0.309 | 0.938 | 0.000 |
+| Cubic polynomial readiness |  | Selection candidate | 15 | 0.318 | 0.001 | 0.935 | 0.313 | 0.936 | 0.000 |
+| Spline readiness benchmark |  | Benchmark | 16 | 0.318 | 0.001 | 0.935 | 0.313 | 0.937 | 0.000 |
+| Quadratic readiness |  | Selection candidate | 14 | 0.319 | 0.001 | 0.935 | 0.316 | 0.937 | 0.001 |
+| Periodic context benchmark |  | Benchmark | 16 | 0.320 | 0.001 | 0.935 | 0.315 | 0.937 | 0.002 |
+| Linear readiness |  | Selection candidate | 13 | 0.340 | 0.001 | 0.935 | 0.358 | 0.933 | 0.022 |
+| Context baseline |  | Selection candidate | 10 | 0.643 | 0.000 | 0.674 | 0.644 | 0.673 | 0.325 |
 
 ![Candidate model comparison](../figures/model_comparison.png)
 
-The selected model uses a one-standard-error rule: pick the simplest model whose repeated-CV log loss is statistically close to the best candidate. This keeps the model easier to explain when extra terms do not materially improve probability quality.
+The selection rule favors the simplest non-benchmark model within one standard error of the best repeated-CV log loss. That rule protects the portfolio story from choosing a visually impressive model that does not materially improve validated probability quality.
 
-## Validation Metrics
+## Final Model
 
 | Metric | Value |
 | --- | --- |
-| Selected model | Full operating model |
-| Selection rule | Simplest model within one standard error of best repeated-CV log loss |
-| Training rows | 1120 |
-| Holdout rows | 280 |
-| Training event rate | 17.1% |
-| Holdout event rate | 17.1% |
+| Selected model | Piecewise readiness |
+| Selection rule | Simplest non-benchmark model within one standard error of best repeated-CV log loss |
+| Shape discovery result | Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks. |
+| Training rows | 2656 |
+| Holdout rows | 666 |
+| Training event rate | 52.1% |
+| Holdout event rate | 52.1% |
 | Repeated CV folds | 5 |
 | Repeated CV repeats | 6 |
-| CV log loss | 0.366 |
-| CV AUC | 0.797 |
-| Holdout log loss | 0.422 |
-| Holdout Brier score | 0.129 |
-| Holdout AUC | 0.719 |
-| Calibration intercept | 0.035 |
-| Calibration slope | 0.655 |
-| Training log loss | 0.349 |
-| Training AUC | 0.820 |
+| CV log loss | 0.318 |
+| CV AUC | 0.935 |
+| Holdout log loss | 0.309 |
+| Holdout Brier score | 0.093 |
+| Holdout AUC | 0.938 |
+| Calibration intercept | 0.165 |
+| Calibration slope | 1.025 |
+| Training log loss | 0.312 |
+| Training AUC | 0.938 |
 
 Bootstrap intervals give a practical uncertainty band around the holdout metrics.
 
-| Metric | Estimate | Bootstrap_95_CI |
+| Metric | Estimate | 95% CI |
 | --- | --- | --- |
-| LogLoss | 0.422 | 0.346 to 0.515 |
-| Brier | 0.129 | 0.103 to 0.160 |
-| AUC | 0.719 | 0.637 to 0.797 |
+| LogLoss | 0.309 | 0.268 to 0.352 |
+| Brier | 0.093 | 0.079 to 0.107 |
+| AUC | 0.938 | 0.919 to 0.955 |
 
-## Coefficient Interpretation
+The adjusted odds ratios below translate the selected GLM into stakeholder-readable effects.
 
-The table reports adjusted odds ratios for the selected model. Continuous predictors are scaled to business-readable increments where useful.
-
-| Predictor | Scale | Odds_ratio | CI_95 | P_value |
+| Predictor | Scale | Odds ratio | 95% CI | p-value |
 | --- | --- | --- | --- | --- |
-| Contract value, log scale | 1-unit / level change | 0.84 | 0.57 to 1.26 | 0.406 |
-| Tenure | 12-unit change | 0.86 | 0.76 to 0.96 | 0.007 |
-| Segment: Mid-Market vs SMB | 1-unit / level change | 0.90 | 0.51 to 1.57 | 0.701 |
-| Segment: Enterprise vs SMB | 1-unit / level change | 0.57 | 0.24 to 1.33 | 0.194 |
-| Segment: Strategic vs SMB | 1-unit / level change | 1.54 | 0.47 to 5.11 | 0.476 |
-| Implementation complexity: Medium vs Low | 1-unit / level change | 1.05 | 0.68 to 1.62 | 0.823 |
-| Implementation complexity: High vs Low | 1-unit / level change | 1.26 | 0.74 to 2.15 | 0.390 |
-| Product usage rate | 0.1-unit change | 0.89 | 0.75 to 1.06 | 0.200 |
-| Active-seat ratio | 0.1-unit change | 0.86 | 0.73 to 1.02 | 0.077 |
-| Training completion | 0.1-unit change | 0.85 | 0.73 to 0.99 | 0.036 |
-| Training completion missing | 1-unit / level change | 0.88 | 0.49 to 1.57 | 0.655 |
-| Support tickets, last 90 days | 3-unit change | 1.81 | 1.34 to 2.46 | <0.001 |
-| Average response time | 12-unit change | 1.39 | 1.11 to 1.76 | 0.005 |
-| Prior incident | 1-unit / level change | 2.19 | 1.48 to 3.22 | <0.001 |
+| Grade 10 vs grade 9 | 1-unit / level change | 1.03 | 0.74 to 1.44 | 0.869 |
+| Grade 11 vs grade 9 | 1-unit / level change | 1.11 | 0.78 to 1.57 | 0.576 |
+| Grade 12 vs grade 9 | 1-unit / level change | 1.08 | 0.65 to 1.80 | 0.770 |
+| Honors track vs regular | 1-unit / level change | 1.27 | 0.85 to 1.91 | 0.242 |
+| AP track vs regular | 1-unit / level change | 1.25 | 0.91 to 1.73 | 0.173 |
+| Beyond-core track vs regular | 1-unit / level change | 2.78 | 0.69 to 11.29 | 0.152 |
+| Current window: end of year | 1-unit / level change | 5.62 | 4.18 to 7.56 | <0.001 |
+| Attendance category: high absence vs normal | 1-unit / level change | 0.83 | 0.57 to 1.23 | 0.363 |
+| Attendance category: at-risk absence vs normal | 1-unit / level change | 1.26 | 0.41 to 3.88 | 0.689 |
+| Attendance probability | 0.1-unit change | 0.80 | 0.50 to 1.29 | 0.366 |
+| Readiness shortfall below 45 | 5-unit change | 4.73 | 3.60 to 6.23 | <0.001 |
+| Readiness gain from 45 to 60 | 5-unit change | 0.34 | 0.29 to 0.39 | <0.001 |
+| Readiness gain above 60 | 5-unit change | 0.86 | 0.75 to 0.98 | 0.023 |
+| School-year sequence | 1-unit / level change | 0.97 | 0.91 to 1.04 | 0.378 |
 
-## Diagnostics
+## Probability Scale
 
-ROC checks ranking quality, while calibration checks whether predicted probabilities are on the right scale across risk bands.
+Risk categories provide a bridge between calibrated probabilities and support workflows.
 
-![ROC and calibration diagnostics](../figures/roc_calibration.png)
-
-| Risk_band | N | Mean_predicted | Observed_rate | Expected_events | Observed_events |
+| Category | Students | Share | Pred | Obs | Cases |
 | --- | --- | --- | --- | --- | --- |
-| Band 1 | 35 | 2.0% | 5.7% | 0.7 | 2 |
-| Band 2 | 35 | 3.9% | 5.7% | 1.4 | 2 |
-| Band 3 | 35 | 6.1% | 17.1% | 2.1 | 6 |
-| Band 4 | 35 | 8.9% | 8.6% | 3.1 | 3 |
-| Band 5 | 35 | 12.5% | 8.6% | 4.4 | 3 |
-| Band 6 | 35 | 18.1% | 14.3% | 6.3 | 5 |
-| Band 7 | 35 | 28.0% | 34.3% | 9.8 | 12 |
-| Band 8 | 35 | 54.4% | 42.9% | 19.0 | 15 |
+| Monitor | 298 | 44.7% | 11.0% | 11.1% | 33 |
+| Watch | 42 | 6.3% | 41.1% | 38.1% | 16 |
+| Review | 43 | 6.5% | 56.4% | 72.1% | 31 |
+| Priority | 283 | 42.5% | 92.5% | 94.3% | 267 |
 
-| Diagnostic | Estimate | Interpretation |
-| --- | --- | --- |
-| Calibration intercept | 0.035 | Near 0 means predicted risk is not systematically high or low |
-| Calibration slope | 0.655 | Near 1 means predicted probabilities are not overly extreme or compressed |
-
-Segment and implementation-complexity calibration checks help identify where monitoring should continue after deployment.
-
-| Subgroup | Level | N | Mean_predicted | Observed_rate | Calibration_gap | Observed_events |
-| --- | --- | --- | --- | --- | --- | --- |
-| segment | Enterprise | 58 | 8.8% | 13.8% | 5.0% | 8 |
-| segment | Mid-Market | 112 | 15.6% | 14.3% | -1.3% | 16 |
-| segment | SMB | 92 | 23.0% | 22.8% | -0.2% | 21 |
-| segment | Strategic | 18 | 17.9% | 16.7% | -1.2% | 3 |
-| implementation_complexity | High | 55 | 35.7% | 38.2% | 2.5% | 21 |
-| implementation_complexity | Low | 111 | 12.3% | 9.9% | -2.4% | 11 |
-| implementation_complexity | Medium | 114 | 11.9% | 14.0% | 2.1% | 16 |
-
-## Threshold Interpretation
-
-A threshold turns probabilities into an operating workflow. Lower thresholds catch more events but increase review burden; higher thresholds concentrate risk but miss more events.
+A threshold turns probabilities into a work queue. Lower thresholds catch more support-risk cases but create more reviews; higher thresholds focus capacity but miss more students.
 
 ![Threshold tradeoffs](../figures/threshold_tradeoff.png)
 
-| Threshold | Flagged | Flagged_share | Events_captured | Sensitivity | Specificity | PPV | NPV |
+| Threshold | Flagged | Flagged % | Captured | Sens | Spec | PPV | NPV |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10% | 147 | 52.5% | 35 of 48 | 72.9% | 51.7% | 23.8% | 90.2% |
-| 15% | 103 | 36.8% | 31 of 48 | 64.6% | 69.0% | 30.1% | 90.4% |
-| 20% | 77 | 27.5% | 28 of 48 | 58.3% | 78.9% | 36.4% | 90.1% |
-| 25% | 59 | 21.1% | 24 of 48 | 50.0% | 84.9% | 40.7% | 89.1% |
-| 30% | 46 | 16.4% | 19 of 48 | 39.6% | 88.4% | 41.3% | 87.6% |
-| 35% | 38 | 13.6% | 16 of 48 | 33.3% | 90.5% | 42.1% | 86.8% |
+| 35% | 368 | 55.3% | 314 of 347 | 90.5% | 83.1% | 85.3% | 88.9% |
+| 45% | 336 | 50.5% | 304 of 347 | 87.6% | 90.0% | 90.5% | 87.0% |
+| 50% | 326 | 48.9% | 298 of 347 | 85.9% | 91.2% | 91.4% | 85.6% |
+| 55% | 310 | 46.5% | 286 of 347 | 82.4% | 92.5% | 92.3% | 82.9% |
+| 65% | 283 | 42.5% | 267 of 347 | 76.9% | 95.0% | 94.3% | 79.1% |
+| 75% | 259 | 38.9% | 250 of 347 | 72.0% | 97.2% | 96.5% | 76.2% |
 
-The table below translates the threshold choices into an illustrative operating economics frame. Assumptions: $750 review cost per flagged account, $12,000 avoided escalation cost, and 55% intervention effectiveness for captured events. These are scenario assumptions, not claims about a real business.
+The table below uses illustrative support-planning economics to show how a threshold can be chosen from capacity and intervention assumptions. These values are scenario assumptions, not claims about a real school system.
 
-| Threshold | Flagged | Events_captured | Avoided_loss | Review_cost | Net_value |
+| Threshold | Flagged | Captured | Benefit | Cost | Net |
 | --- | --- | --- | --- | --- | --- |
-| 10% | 147 | 35 | $231,000 | $110,250 | $120,750 |
-| 15% | 103 | 31 | $204,600 | $77,250 | $127,350 |
-| 20% | 77 | 28 | $184,800 | $57,750 | $127,050 |
-| 25% | 59 | 24 | $158,400 | $44,250 | $114,150 |
-| 30% | 46 | 19 | $125,400 | $34,500 | $90,900 |
-| 35% | 38 | 16 | $105,600 | $28,500 | $77,100 |
+| 35% | 368 | 314 | $70,650 | $27,600 | $43,050 |
+| 45% | 336 | 304 | $68,400 | $25,200 | $43,200 |
+| 50% | 326 | 298 | $67,050 | $24,450 | $42,600 |
+| 55% | 310 | 286 | $64,350 | $23,250 | $41,100 |
+| 65% | 283 | 267 | $60,075 | $21,225 | $38,850 |
+| 75% | 259 | 250 | $56,250 | $19,425 | $36,825 |
 
-## Lift and Prioritization
+## Model Checks
 
-A ranked queue is often more useful than a single classification cutoff. The lift table shows how much event concentration appears in each predicted-risk decile.
+ROC checks ranking quality. Calibration checks whether predicted probabilities are on the right scale across ordered risk bands.
+
+![ROC and calibration diagnostics](../figures/roc_calibration.png)
+
+| Band | N | Pred | Obs | Expected | Cases |
+| --- | --- | --- | --- | --- | --- |
+| Band 1 | 83 | 2.2% | 8.4% | 1.8 | 7 |
+| Band 2 | 83 | 6.3% | 9.6% | 5.2 | 8 |
+| Band 3 | 83 | 14.7% | 9.6% | 12.2 | 8 |
+| Band 4 | 84 | 32.8% | 25.0% | 27.6 | 21 |
+| Band 5 | 83 | 62.0% | 73.5% | 51.4 | 61 |
+| Band 6 | 83 | 87.5% | 90.4% | 72.6 | 75 |
+| Band 7 | 83 | 98.2% | 100.0% | 81.5 | 83 |
+| Band 8 | 84 | 99.9% | 100.0% | 83.9 | 84 |
+
+| Diagnostic | Estimate | Interpretation |
+| --- | --- | --- |
+| Calibration intercept | 0.165 | Near 0 means predicted risk is not systematically high or low |
+| Calibration slope | 1.025 | Near 1 means predicted probabilities are not overly extreme or compressed |
+
+Subgroup calibration checks show where monitoring would matter before operational use. The table reports groups with at least 25 holdout records.
+
+| Group | Level | N | Pred | Obs | Gap | Cases |
+| --- | --- | --- | --- | --- | --- | --- |
+| course track | ap | 211 | 33.7% | 39.3% | 5.7% | 83 |
+| course track | honors | 84 | 33.9% | 29.8% | -4.1% | 25 |
+| course track | regular | 368 | 64.0% | 64.7% | 0.6% | 238 |
+| assessment window | beginning-of-year | 405 | 45.4% | 49.9% | 4.5% | 202 |
+| assessment window | end-of-year | 261 | 58.4% | 55.6% | -2.9% | 145 |
+| attendance category | at-risk | 60 | 53.7% | 63.3% | 9.6% | 38 |
+| attendance category | high | 285 | 49.6% | 49.5% | -0.1% | 141 |
+| attendance category | normal | 321 | 50.7% | 52.3% | 1.7% | 168 |
+
+A ranked queue is often more useful than a single classification cutoff. The lift chart shows how concentrated support-risk cases are in the highest predicted-risk deciles.
 
 ![Lift by predicted risk decile](../figures/lift_chart.png)
 
-| Decile | N | Mean_predicted | Observed_rate | Events | Lift | Cumulative_capture |
+| Decile | N | Pred | Obs | Cases | Lift | Capture |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 28 | 58.4% | 46.4% | 13 | 2.71x | 27.1% |
-| 2 | 28 | 32.6% | 39.3% | 11 | 2.29x | 50.0% |
-| 3 | 28 | 22.1% | 17.9% | 5 | 1.04x | 60.4% |
-| 4 | 28 | 16.2% | 10.7% | 3 | 0.62x | 66.7% |
-| 5 | 28 | 12.0% | 10.7% | 3 | 0.62x | 72.9% |
-| 6 | 28 | 9.1% | 10.7% | 3 | 0.62x | 79.2% |
-| 7 | 28 | 6.9% | 17.9% | 5 | 1.04x | 89.6% |
-| 8 | 28 | 4.9% | 7.1% | 2 | 0.42x | 93.8% |
-| 9 | 28 | 3.5% | 7.1% | 2 | 0.42x | 97.9% |
-| 10 | 28 | 1.8% | 3.6% | 1 | 0.21x | 100.0% |
+| 1 | 66 | 99.9% | 100.0% | 66 | 1.92x | 19.0% |
+| 2 | 67 | 99.1% | 100.0% | 67 | 1.92x | 38.3% |
+| 3 | 66 | 95.2% | 98.5% | 65 | 1.89x | 57.1% |
+| 4 | 67 | 82.0% | 86.6% | 58 | 1.66x | 73.8% |
+| 5 | 67 | 58.8% | 70.1% | 47 | 1.35x | 87.3% |
+| 6 | 66 | 35.2% | 24.2% | 16 | 0.47x | 91.9% |
+| 7 | 67 | 18.8% | 17.9% | 12 | 0.34x | 95.4% |
+| 8 | 66 | 10.1% | 6.1% | 4 | 0.12x | 96.5% |
+| 9 | 67 | 4.4% | 11.9% | 8 | 0.23x | 98.8% |
+| 10 | 67 | 2.0% | 6.0% | 4 | 0.11x | 100.0% |
 
-Risk categories provide an executive-friendly bridge between probabilities and action queues.
+## Sensitivity Check
 
-| Risk_category | Accounts | Share | Mean_predicted | Observed_rate | Observed_events |
-| --- | --- | --- | --- | --- | --- |
-| Monitor | 133 | 47.5% | 5.0% | 9.8% | 13 |
-| Watch | 70 | 25.0% | 14.2% | 10.0% | 7 |
-| Review | 39 | 13.9% | 26.2% | 30.8% | 12 |
-| Priority | 38 | 13.6% | 52.9% | 42.1% | 16 |
-
-## Sensitivity Analysis
-
-The primary model imputes missing training completion with segment medians and includes a missingness indicator. The sensitivity model uses a conservative assumption: missing training completion is treated as zero. This tests whether the operating story depends on a favorable missing-data assumption.
+The sensitivity analysis lowers the support-risk score cut point from 50 to 45 and refits the selected model family. This tests whether the prioritization story depends on one particular threshold definition.
 
 ![Sensitivity analysis](../figures/sensitivity_analysis.png)
 
 | Measure | Primary | Sensitivity |
 | --- | --- | --- |
-| Holdout log loss | 0.422 | 0.421 |
-| Holdout Brier score | 0.129 | 0.129 |
-| Holdout AUC | 0.719 | 0.719 |
-| Mean absolute probability change | Reference | 0.16% |
-| Accounts changing risk category | Reference | 2 of 280 |
-| Maximum absolute probability change | Reference | 1.64% |
+| Primary holdout event rate | 52.1% | Reference |
+| Sensitivity holdout event rate | Reference | 41.0% |
+| Sensitivity holdout log loss | 0.309 | 0.329 |
+| Sensitivity holdout Brier score | 0.093 | 0.098 |
+| Sensitivity holdout AUC | 0.938 | 0.923 |
+| Rank correlation with primary predictions | Reference | 0.989 |
+| Top-quintile overlap with primary ranking | Reference | 97.8% |
+| Students changing risk category | Reference | 159 of 666 |
 
 ## Scenario Profiles
 
-Scenario profiles translate the model into concrete account-review examples with probability intervals. These are synthetic profiles used for communication and model interpretation.
+Scenario profiles translate the model into concrete, public-safe support-planning examples with probability intervals.
 
-![Scenario risk curves](../figures/scenario_usage_curves.png)
+![Scenario readiness risk curves](../figures/scenario_readiness_curves.png)
 
-| Scenario | Segment | Complexity | Usage | Support_tickets_90d | Response_hours | Prior_incident | Predicted_risk | CI_95 | Risk_category |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Stable renewal | Mid-Market | Low | 82.0% | 1 | 7 | 0 | 2.0% | 1.1% to 3.7% | Monitor |
-| Enablement watchlist | SMB | Medium | 55.0% | 4 | 16 | 0 | 25.5% | 15.5% to 39.0% | Review |
-| Priority intervention | Enterprise | High | 35.0% | 8 | 28 | 1 | 73.0% | 51.2% to 87.4% | Priority |
+| Scenario | Grade | Track | Window | Attendance | Readiness | Risk | 95% CI | Category |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| On-track checkpoint | 10 | regular | beginning-of-year | normal | 72.0 | 2.1% | 1.3% to 3.6% | Monitor |
+| Attendance watch | 9 | regular | beginning-of-year | high | 51.0 | 19.3% | 10.1% to 33.7% | Monitor |
+| Priority support | 11 | honors | end-of-year | at-risk | 39.0 | 99.0% | 97.9% to 99.5% | Priority |
 
-## Decision-Support Implications
+## Bottom Line
 
-- Use predicted risk to prioritize human account review, not to automate account decisions.
-- Choose the review threshold based on available review capacity, expected intervention cost, and tolerance for missed escalations.
-- Monitor calibration by segment and implementation complexity before treating risk bands as stable operating categories.
-- Refit and recalibrate the model when product usage, support operations, or customer mix materially changes.
+- Use the model to prioritize human review and early support planning, not to automate student-level decisions.
+- Keep the piecewise readiness shape because it captures the discovered nonlinear risk pattern while staying easier to explain than a flexible spline.
+- Choose operating thresholds from review capacity, support cost, and tolerance for missed support-risk cases.
+- Monitor calibration by course track, assessment window, and attendance group before treating risk categories as stable operating labels.
 
 ## Reproducibility
 
-Rebuild the full evidence packet with:
-
-```bash
-make all
-```
-
-The build uses base R only and does not require package installation, network access, credentials, or private data.
+Rebuild the full evidence packet with `make all`. The core pipeline uses base R, the included public-safe extract, and no credentials, private files, or network access.
 
 ## Public-Safety Statement
 

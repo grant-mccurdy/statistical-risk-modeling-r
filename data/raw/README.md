@@ -1,11 +1,12 @@
 # Raw Data
 
-This project does not use or redistribute raw external data.
+`synthetic_education_assessment_long.csv` is a public-safe assessment extract
+derived from the companion education data simulation project. It uses simulated
+student, course, section, teacher, attendance, and assessment-window records,
+with generalized score/readiness behavior informed by a bootstrapped assessment
+workflow.
 
-The analysis starts from a synthetic data generator in
-`R/generate_synthetic_data.R`. The generated records are written to
-`data/processed/synthetic_account_risk.csv`.
-
-No private coursework files, instructor materials, source prompts, real student
-records, patient-identifiable records, customer records, credentials, or
-private exports belong in this directory.
+The extract is included so this repository can rebuild from a clean checkout
+without access to private files or sibling repositories. It contains no real
+student names, real student IDs, school-private rosters, credentials, raw
+private exports, or private coursework material.

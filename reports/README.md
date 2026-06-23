@@ -13,9 +13,10 @@ Other useful report files:
 - `executive_brief.md`: one-page leadership summary.
 - `statistical_risk_modeling_report.md`: GitHub-readable Markdown version of
   the full report.
-- `model_comparison.csv`: candidate model comparison.
+- `parametric_family_review.csv`: model-family discovery summary.
+- `model_comparison.csv`: repeated-CV and holdout model comparison.
 - `metric_uncertainty.csv`: bootstrap holdout metric intervals.
-- `threshold_table.csv`: operating characteristics by review threshold.
-- `decision_economics.csv`: illustrative threshold economics.
+- `threshold_table.csv`: operating characteristics by support-review threshold.
+- `decision_economics.csv`: illustrative support-planning threshold economics.
 - `decile_lift.csv`: risk-ranking lift and cumulative capture.
-- `scenario_profiles.csv`: synthetic account-review profiles.
+- `scenario_profiles.csv`: synthetic student support-review profiles.

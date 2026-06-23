@@ -23,7 +23,7 @@ report-rmd:
 	$(RSCRIPT) -e "rmarkdown::render('reports/statistical_risk_modeling_report.Rmd', output_format='github_document', knit_root_dir=getwd())"
 
 clean:
-	rm -f data/processed/synthetic_account_risk.csv
+	rm -f data/processed/education_readiness_risk.csv
 	rm -f reports/*.csv reports/model_artifacts.rds reports/statistical_risk_modeling_report.md
 	rm -f reports/statistical_risk_modeling_report.pdf
 	rm -f figures/*.png

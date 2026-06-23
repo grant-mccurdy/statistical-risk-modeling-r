@@ -2,84 +2,65 @@ source(file.path("R", "model_utils.R"))
 
 ensure_project_dirs()
 
-data_path <- file.path("data", "processed", "synthetic_account_risk.csv")
+data_path <- file.path("data", "processed", "education_readiness_risk.csv")
 if (!file.exists(data_path)) {
   source(file.path("R", "generate_synthetic_data.R"))
 }
 
-account_risk <- read.csv(data_path, stringsAsFactors = FALSE)
+readiness <- read.csv(data_path, stringsAsFactors = FALSE)
 
-account_risk$segment <- factor(
-  account_risk$segment,
-  levels = c("SMB", "Mid-Market", "Enterprise", "Strategic")
+readiness$assessment_window <- factor(
+  readiness$assessment_window,
+  levels = c("beginning_of_year", "end_of_year")
 )
-account_risk$region <- factor(
-  account_risk$region,
-  levels = c("North", "South", "East", "West")
+readiness$next_assessment_window <- factor(
+  readiness$next_assessment_window,
+  levels = c("beginning_of_year", "end_of_year")
 )
-account_risk$implementation_complexity <- factor(
-  account_risk$implementation_complexity,
-  levels = c("Low", "Medium", "High")
+readiness$attendance_category <- factor(
+  readiness$attendance_category,
+  levels = c("normal", "high", "at_risk")
 )
+readiness$course_track <- factor(
+  readiness$course_track,
+  levels = c("regular", "honors", "ap", "beyond_core")
+)
+readiness$grade_level <- factor(readiness$grade_level, levels = c(9, 10, 11, 12))
+readiness$current_absent <- as.integer(readiness$current_absent)
+readiness$current_readiness_missing <- as.integer(readiness$current_readiness_missing)
 
-account_risk$log_contract_value <- log(account_risk$contract_value)
-account_risk$training_completion_missing <- as.integer(
-  is.na(account_risk$training_completion_rate)
-)
-
-segment_medians <- tapply(
-  account_risk$training_completion_rate,
-  account_risk$segment,
-  median,
-  na.rm = TRUE
-)
-overall_training_median <- median(account_risk$training_completion_rate, na.rm = TRUE)
-
-account_risk$training_completion_imputed <- account_risk$training_completion_rate
-for (segment_name in names(segment_medians)) {
-  missing_idx <- is.na(account_risk$training_completion_imputed) &
-    account_risk$segment == segment_name
-  fill_value <- segment_medians[[segment_name]]
-  if (is.na(fill_value)) {
-    fill_value <- overall_training_median
-  }
-  account_risk$training_completion_imputed[missing_idx] <- fill_value
-}
-account_risk$training_completion_zero_filled <- ifelse(
-  is.na(account_risk$training_completion_rate),
-  0,
-  account_risk$training_completion_rate
-)
-
-outcome <- "escalation_flag"
-train_idx <- make_stratified_split(account_risk[[outcome]], train_prop = 0.80)
-train_data <- account_risk[train_idx, , drop = FALSE]
-holdout_data <- account_risk[-train_idx, , drop = FALSE]
+outcome <- "support_risk_next"
+train_idx <- make_stratified_split(readiness[[outcome]], train_prop = 0.80)
+train_data <- readiness[train_idx, , drop = FALSE]
+holdout_data <- readiness[-train_idx, , drop = FALSE]
 
 candidate_formulas <- list(
-  "Baseline exposure" = escalation_flag ~ log_contract_value + tenure_months + segment,
-  "Usage behavior" = escalation_flag ~ log_contract_value + tenure_months + segment +
-    product_usage_rate + active_seats_ratio + training_completion_imputed +
-    training_completion_missing,
-  "Support load" = escalation_flag ~ log_contract_value + tenure_months + segment +
-    support_tickets_90d + avg_response_hours + prior_incident,
-  "Full operating model" = escalation_flag ~ log_contract_value + tenure_months + segment +
-    implementation_complexity + product_usage_rate + active_seats_ratio +
-    training_completion_imputed + training_completion_missing +
-    support_tickets_90d + avg_response_hours + prior_incident,
-  "Full model with interaction" = escalation_flag ~ log_contract_value + tenure_months +
-    segment + implementation_complexity + product_usage_rate + active_seats_ratio +
-    training_completion_imputed + training_completion_missing + support_tickets_90d +
-    avg_response_hours + prior_incident + product_usage_rate:support_tickets_90d,
-  "Spline operating benchmark" = escalation_flag ~ log_contract_value + tenure_months +
-    segment + implementation_complexity + splines::ns(product_usage_rate, df = 3) +
-    splines::ns(active_seats_ratio, df = 3) + training_completion_imputed +
-    training_completion_missing + support_tickets_90d +
-    splines::ns(avg_response_hours, df = 3) + prior_incident
+  "Context baseline" = support_risk_next ~ grade_level + course_track +
+    assessment_window + attendance_category,
+  "Linear readiness" = support_risk_next ~ grade_level + course_track +
+    assessment_window + attendance_category + attendance_probability +
+    current_readiness + school_year_offset,
+  "Quadratic readiness" = support_risk_next ~ grade_level + course_track +
+    assessment_window + attendance_category + attendance_probability +
+    current_readiness_z + I(current_readiness_z^2) + school_year_offset,
+  "Cubic polynomial readiness" = support_risk_next ~ grade_level + course_track +
+    assessment_window + attendance_category + attendance_probability +
+    current_readiness_z + I(current_readiness_z^2) +
+    I(current_readiness_z^3) + school_year_offset,
+  "Piecewise readiness" = support_risk_next ~ grade_level + course_track +
+    assessment_window + attendance_category + attendance_probability +
+    readiness_below_45 + readiness_45_to_60 + readiness_above_60 +
+    school_year_offset,
+  "Periodic context benchmark" = support_risk_next ~ grade_level + course_track +
+    assessment_window + attendance_category + attendance_probability +
+    current_readiness_z + I(current_readiness_z^2) +
+    school_year_offset + annual_sin + annual_cos,
+  "Spline readiness benchmark" = support_risk_next ~ grade_level + course_track +
+    assessment_window + attendance_category + attendance_probability +
+    splines::ns(current_readiness, df = 4) + school_year_offset
 )
 
-benchmark_models <- "Spline operating benchmark"
-
+benchmark_models <- c("Periodic context benchmark", "Spline readiness benchmark")
 cv_folds <- 5
 cv_repeats <- 6
 
@@ -92,7 +73,6 @@ cv_results <- run_repeated_cv(
 )
 
 cv_summary <- summarize_cv(cv_results)
-
 candidate_fits <- lapply(candidate_formulas, function(model_formula) {
   suppressWarnings(glm(model_formula, data = train_data, family = binomial()))
 })
@@ -114,10 +94,14 @@ holdout_metrics <- do.call(rbind, lapply(names(candidate_fits), function(model_n
 model_comparison <- merge(cv_summary, holdout_metrics, by = "Model")
 model_comparison <- model_comparison[order(model_comparison$CV_LogLoss), ]
 
-selection_candidates <- model_comparison[!(model_comparison$Model %in% benchmark_models), ]
+selection_candidates <- model_comparison[
+  !(model_comparison$Model %in% benchmark_models),
+]
 best_row <- selection_candidates[which.min(selection_candidates$CV_LogLoss), ]
 best_logloss_limit <- best_row$CV_LogLoss + best_row$CV_LogLoss_SD / sqrt(cv_repeats)
-eligible <- selection_candidates[selection_candidates$CV_LogLoss <= best_logloss_limit, ]
+eligible <- selection_candidates[
+  selection_candidates$CV_LogLoss <= best_logloss_limit,
+]
 eligible <- eligible[order(eligible$Parameters, eligible$CV_LogLoss), ]
 selected_model_name <- eligible$Model[1]
 
@@ -154,6 +138,7 @@ final_metrics <- data.frame(
   Metric = c(
     "Selected model",
     "Selection rule",
+    "Shape discovery result",
     "Training rows",
     "Holdout rows",
     "Training event rate",
@@ -172,7 +157,8 @@ final_metrics <- data.frame(
   ),
   Value = c(
     selected_model_name,
-    "Simplest model within one standard error of best repeated-CV log loss",
+    "Simplest non-benchmark model within one standard error of best repeated-CV log loss",
+    "Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks.",
     nrow(train_data),
     nrow(holdout_data),
     format_pct(mean(train_data[[outcome]])),
@@ -197,35 +183,40 @@ final_metrics <- data.frame(
 )
 
 scale_map <- list(
-  tenure_months = 12,
-  product_usage_rate = 0.10,
-  active_seats_ratio = 0.10,
-  training_completion_imputed = 0.10,
-  training_completion_zero_filled = 0.10,
-  support_tickets_90d = 3,
-  avg_response_hours = 12,
-  log_contract_value = 1
+  attendance_probability = 0.10,
+  current_readiness = 5,
+  current_readiness_z = 1,
+  readiness_below_45 = 5,
+  readiness_45_to_60 = 5,
+  readiness_above_60 = 5,
+  school_year_offset = 1
 )
 
 label_map <- list(
-  log_contract_value = "Contract value, log scale",
-  tenure_months = "Tenure",
-  "segmentMid-Market" = "Segment: Mid-Market vs SMB",
-  segmentEnterprise = "Segment: Enterprise vs SMB",
-  segmentStrategic = "Segment: Strategic vs SMB",
-  implementation_complexityMedium = "Implementation complexity: Medium vs Low",
-  implementation_complexityHigh = "Implementation complexity: High vs Low",
-  product_usage_rate = "Product usage rate",
-  active_seats_ratio = "Active-seat ratio",
-  training_completion_imputed = "Training completion",
-  training_completion_missing = "Training completion missing",
-  support_tickets_90d = "Support tickets, last 90 days",
-  avg_response_hours = "Average response time",
-  prior_incident = "Prior incident",
-  `product_usage_rate:support_tickets_90d` = "Usage by support-ticket interaction"
+  "grade_level10" = "Grade 10 vs grade 9",
+  "grade_level11" = "Grade 11 vs grade 9",
+  "grade_level12" = "Grade 12 vs grade 9",
+  course_trackhonors = "Honors track vs regular",
+  course_trackap = "AP track vs regular",
+  course_trackbeyond_core = "Beyond-core track vs regular",
+  assessment_windowend_of_year = "Current window: end of year",
+  attendance_categoryhigh = "Attendance category: high absence vs normal",
+  attendance_categoryat_risk = "Attendance category: at-risk absence vs normal",
+  attendance_probability = "Attendance probability",
+  current_readiness = "Current readiness",
+  current_readiness_z = "Current readiness, standardized",
+  "I(current_readiness_z^2)" = "Current readiness squared",
+  "I(current_readiness_z^3)" = "Current readiness cubed",
+  readiness_below_45 = "Readiness shortfall below 45",
+  readiness_45_to_60 = "Readiness gain from 45 to 60",
+  readiness_above_60 = "Readiness gain above 60",
+  school_year_offset = "School-year sequence",
+  annual_sin = "Annual sine term",
+  annual_cos = "Annual cosine term"
 )
 
-odds_ratios <- make_odds_ratio_table(final_model,
+odds_ratios <- make_odds_ratio_table(
+  final_model,
   scale_map = scale_map,
   label_map = label_map
 )
@@ -245,31 +236,46 @@ odds_ratios_display <- data.frame(
 
 roc_curve <- make_roc_curve(holdout_data[[outcome]], final_predictions)
 calibration <- make_calibration_table(holdout_data[[outcome]], final_predictions, bins = 8)
-thresholds <- make_threshold_table(holdout_data[[outcome]], final_predictions)
+thresholds <- make_threshold_table(
+  holdout_data[[outcome]],
+  final_predictions,
+  thresholds = c(0.35, 0.45, 0.50, 0.55, 0.65, 0.75)
+)
 lift_table <- make_decile_lift_table(holdout_data[[outcome]], final_predictions, groups = 10)
-decision_economics <- make_decision_economics(thresholds)
+decision_economics <- make_decision_economics(
+  thresholds,
+  review_cost = 75,
+  case_value = 500,
+  intervention_effect = 0.45
+)
 
 subgroup_calibration <- rbind(
   make_subgroup_calibration(
     data = holdout_data,
-    group_var = "segment",
+    group_var = "course_track",
     y = holdout_data[[outcome]],
     p = final_predictions
   ),
   make_subgroup_calibration(
     data = holdout_data,
-    group_var = "implementation_complexity",
+    group_var = "assessment_window",
+    y = holdout_data[[outcome]],
+    p = final_predictions
+  ),
+  make_subgroup_calibration(
+    data = holdout_data,
+    group_var = "attendance_category",
     y = holdout_data[[outcome]],
     p = final_predictions
   )
 )
+subgroup_calibration <- subgroup_calibration[subgroup_calibration$N >= 25, , drop = FALSE]
 
 sensitivity_formula_text <- paste(deparse(selected_formula), collapse = " ")
-sensitivity_formula_text <- gsub(
-  "training_completion_imputed",
-  "training_completion_zero_filled",
-  sensitivity_formula_text,
-  fixed = TRUE
+sensitivity_formula_text <- sub(
+  "^support_risk_next",
+  "support_risk_next_45",
+  sensitivity_formula_text
 )
 sensitivity_formula <- as.formula(sensitivity_formula_text)
 sensitivity_model <- suppressWarnings(glm(
@@ -279,23 +285,39 @@ sensitivity_model <- suppressWarnings(glm(
 ))
 sensitivity_predictions <- safe_predict_glm(sensitivity_model, holdout_data)
 sensitivity_metrics <- evaluate_predictions(
-  holdout_data[[outcome]],
+  holdout_data$support_risk_next_45,
   sensitivity_predictions
 )
 
 primary_category <- risk_category(final_predictions)
 sensitivity_category <- risk_category(sensitivity_predictions)
+rank_correlation <- suppressWarnings(cor(
+  final_predictions,
+  sensitivity_predictions,
+  method = "spearman"
+))
+top_primary <- order(final_predictions, decreasing = TRUE)[
+  seq_len(ceiling(length(final_predictions) * 0.20))
+]
+top_sensitivity <- order(sensitivity_predictions, decreasing = TRUE)[
+  seq_len(ceiling(length(sensitivity_predictions) * 0.20))
+]
+top_overlap <- length(intersect(top_primary, top_sensitivity)) / length(top_primary)
 
 sensitivity_comparison <- data.frame(
   Measure = c(
-    "Holdout log loss",
-    "Holdout Brier score",
-    "Holdout AUC",
-    "Mean absolute probability change",
-    "Accounts changing risk category",
-    "Maximum absolute probability change"
+    "Primary holdout event rate",
+    "Sensitivity holdout event rate",
+    "Sensitivity holdout log loss",
+    "Sensitivity holdout Brier score",
+    "Sensitivity holdout AUC",
+    "Rank correlation with primary predictions",
+    "Top-quintile overlap with primary ranking",
+    "Students changing risk category"
   ),
   Primary = c(
+    format_pct(mean(holdout_data$support_risk_next)),
+    "Reference",
     format_num(final_holdout_metrics$LogLoss, 3),
     format_num(final_holdout_metrics$Brier, 3),
     format_num(final_holdout_metrics$AUC, 3),
@@ -304,24 +326,23 @@ sensitivity_comparison <- data.frame(
     "Reference"
   ),
   Sensitivity = c(
+    "Reference",
+    format_pct(mean(holdout_data$support_risk_next_45)),
     format_num(sensitivity_metrics$LogLoss, 3),
     format_num(sensitivity_metrics$Brier, 3),
     format_num(sensitivity_metrics$AUC, 3),
-    format_pct(mean(abs(sensitivity_predictions - final_predictions)), 2),
-    paste0(sum(primary_category != sensitivity_category), " of ", length(final_predictions)),
-    format_pct(max(abs(sensitivity_predictions - final_predictions)), 2)
+    format_num(rank_correlation, 3),
+    format_pct(top_overlap),
+    paste0(sum(primary_category != sensitivity_category), " of ", length(final_predictions))
   ),
   stringsAsFactors = FALSE
 )
 
-risk_category_table <- as.data.frame(table(primary_category), stringsAsFactors = FALSE)
-names(risk_category_table) <- c("RiskCategory", "Accounts")
-risk_category_table$Share <- risk_category_table$Accounts / sum(risk_category_table$Accounts)
 risk_category_rows <- lapply(levels(primary_category), function(level) {
   idx <- primary_category == level
   data.frame(
     RiskCategory = level,
-    Accounts = sum(idx),
+    Students = sum(idx),
     Share = sum(idx) / length(primary_category),
     MeanPredicted = ifelse(sum(idx) == 0, NA_real_, mean(final_predictions[idx])),
     ObservedRate = ifelse(sum(idx) == 0, NA_real_, mean(holdout_data[[outcome]][idx])),
@@ -335,7 +356,7 @@ thresholds_display <- data.frame(
   Threshold = format_pct(thresholds$Threshold, 0),
   Flagged = thresholds$Flagged,
   Flagged_share = format_pct(thresholds$FlaggedRate),
-  Events_captured = paste0(thresholds$EventsCaptured, " of ", thresholds$TotalEvents),
+  Risks_captured = paste0(thresholds$EventsCaptured, " of ", thresholds$TotalEvents),
   Sensitivity = format_pct(thresholds$Sensitivity),
   Specificity = format_pct(thresholds$Specificity),
   PPV = format_pct(thresholds$PPV),
@@ -348,8 +369,8 @@ calibration_display <- data.frame(
   N = calibration$N,
   Mean_predicted = format_pct(calibration$MeanPredicted),
   Observed_rate = format_pct(calibration$ObservedRate),
-  Expected_events = format_num(calibration$ExpectedEvents, 1),
-  Observed_events = calibration$ObservedEvents,
+  Expected_risks = format_num(calibration$ExpectedEvents, 1),
+  Observed_risks = calibration$ObservedEvents,
   stringsAsFactors = FALSE
 )
 
@@ -360,14 +381,18 @@ subgroup_display <- data.frame(
   Mean_predicted = format_pct(subgroup_calibration$MeanPredicted),
   Observed_rate = format_pct(subgroup_calibration$ObservedRate),
   Calibration_gap = format_pct(subgroup_calibration$CalibrationGap),
-  Observed_events = subgroup_calibration$ObservedEvents,
+  Observed_risks = subgroup_calibration$ObservedEvents,
   stringsAsFactors = FALSE
 )
 
 model_comparison_display <- data.frame(
   Model = model_comparison$Model,
   Selected = ifelse(model_comparison$Selected, "Yes", ""),
-  Role = ifelse(model_comparison$Model %in% benchmark_models, "Benchmark", "Selection candidate"),
+  Role = ifelse(
+    model_comparison$Model %in% benchmark_models,
+    "Benchmark",
+    "Selection candidate"
+  ),
   Parameters = model_comparison$Parameters,
   CV_log_loss = format_num(model_comparison$CV_LogLoss, 3),
   CV_log_loss_SD = format_num(model_comparison$CV_LogLoss_SD, 3),
@@ -380,11 +405,11 @@ model_comparison_display <- data.frame(
 
 risk_category_display <- data.frame(
   Risk_category = risk_category_summary$RiskCategory,
-  Accounts = risk_category_summary$Accounts,
+  Students = risk_category_summary$Students,
   Share = format_pct(risk_category_summary$Share),
   Mean_predicted = format_pct(risk_category_summary$MeanPredicted),
   Observed_rate = format_pct(risk_category_summary$ObservedRate),
-  Observed_events = risk_category_summary$Events,
+  Observed_risks = risk_category_summary$Events,
   stringsAsFactors = FALSE
 )
 
@@ -411,7 +436,7 @@ lift_display <- data.frame(
   N = lift_table$N,
   Mean_predicted = format_pct(lift_table$MeanPredicted),
   Observed_rate = format_pct(lift_table$ObservedRate),
-  Events = lift_table$Events,
+  Risks = lift_table$Events,
   Lift = paste0(format_num(lift_table$Lift, 2), "x"),
   Cumulative_capture = format_pct(lift_table$CumulativeCapture),
   stringsAsFactors = FALSE
@@ -419,52 +444,131 @@ lift_display <- data.frame(
 
 decision_economics_display <- data.frame(
   Threshold = format_pct(decision_economics$Threshold, 0),
-  Flagged = decision_economics$Flagged,
-  Events_captured = decision_economics$EventsCaptured,
-  Avoided_loss = paste0("$", format(round(decision_economics$AvoidedLoss), big.mark = ",", trim = TRUE)),
+  Students_flagged = decision_economics$Flagged,
+  Risks_captured = decision_economics$EventsCaptured,
+  Illustrative_benefit = paste0("$", format(round(decision_economics$AvoidedLoss), big.mark = ",", trim = TRUE)),
   Review_cost = paste0("$", format(round(decision_economics$ReviewCost), big.mark = ",", trim = TRUE)),
   Net_value = paste0("$", format(round(decision_economics$NetValue), big.mark = ",", trim = TRUE)),
   stringsAsFactors = FALSE
 )
 
-scenario_profiles <- data.frame(
-  Scenario = c("Stable renewal", "Enablement watchlist", "Priority intervention"),
-  segment = factor(c("Mid-Market", "SMB", "Enterprise"), levels = levels(train_data$segment)),
-  region = factor(c("West", "South", "East"), levels = levels(train_data$region)),
-  implementation_complexity = factor(c("Low", "Medium", "High"), levels = levels(train_data$implementation_complexity)),
-  contract_value = c(78000, 42000, 285000),
-  tenure_months = c(38, 14, 8),
-  product_usage_rate = c(0.82, 0.55, 0.35),
-  active_seats_ratio = c(0.78, 0.47, 0.32),
-  training_completion_rate = c(0.83, 0.45, 0.25),
-  support_tickets_90d = c(1, 4, 8),
-  avg_response_hours = c(7, 16, 28),
-  prior_incident = c(0, 0, 1),
+family_review <- data.frame(
+  Model_family = c(
+    "Context baseline",
+    "Linear readiness",
+    "Quadratic readiness",
+    "Cubic polynomial readiness",
+    "Piecewise readiness",
+    "Periodic context benchmark",
+    "Spline readiness benchmark"
+  ),
+  Why_tested = c(
+    "Tests whether demographic and operating context alone is enough.",
+    "Adds the main readiness signal with a simple monotone probability shape.",
+    "Tests whether risk accelerates near low readiness values.",
+    "Checks whether a more flexible polynomial improves fit enough to justify instability risk.",
+    "Uses the smooth shape discovery to encode separate readiness regions.",
+    "Tests recurring assessment-window structure without making periodicity the headline.",
+    "Flexible nonlinear benchmark for the readiness curve."
+  ),
+  Decision = c(
+    "Rejected; validation is much weaker without readiness.",
+    "Rejected; ranking is strong but probability quality is worse.",
+    "Rejected; close to selected model, but less directly aligned with the discovered threshold shape.",
+    "Rejected; added polynomial curvature without improving the operating story.",
+    ifelse(
+      selected_model_name == "Piecewise readiness",
+      "Selected as the operating model.",
+      "Useful interpretable challenger."
+    ),
+    "Benchmark only; periodic terms did not justify replacing the operating model.",
+    "Benchmark only; used to test whether flexible curvature changes the conclusion."
+  ),
+  CV_log_loss = model_comparison_display$CV_log_loss[
+    match(
+      c(
+        "Context baseline", "Linear readiness", "Quadratic readiness",
+        "Cubic polynomial readiness", "Piecewise readiness",
+        "Periodic context benchmark", "Spline readiness benchmark"
+      ),
+      model_comparison_display$Model
+    )
+  ],
+  Holdout_AUC = model_comparison_display$Holdout_AUC[
+    match(
+      c(
+        "Context baseline", "Linear readiness", "Quadratic readiness",
+        "Cubic polynomial readiness", "Piecewise readiness",
+        "Periodic context benchmark", "Spline readiness benchmark"
+      ),
+      model_comparison_display$Model
+    )
+  ],
   stringsAsFactors = FALSE
 )
-scenario_profiles$log_contract_value <- log(scenario_profiles$contract_value)
-scenario_profiles$training_completion_missing <- 0
-scenario_profiles$training_completion_imputed <- scenario_profiles$training_completion_rate
-scenario_profiles$training_completion_zero_filled <- scenario_profiles$training_completion_rate
+
+readiness_mean <- mean(readiness$current_readiness)
+readiness_sd <- sd(readiness$current_readiness)
+
+make_profile_data <- function(current_readiness_values, scenario_row) {
+  new_data <- scenario_row[rep(1, length(current_readiness_values)), ]
+  new_data$current_readiness <- current_readiness_values
+  new_data$current_readiness_z <- (current_readiness_values - readiness_mean) / readiness_sd
+  new_data$readiness_below_45 <- pmax(45 - current_readiness_values, 0)
+  new_data$readiness_45_to_60 <- pmin(pmax(current_readiness_values - 45, 0), 15)
+  new_data$readiness_above_60 <- pmax(current_readiness_values - 60, 0)
+  new_data$semester_sin <- sin(pi * new_data$sequence_index)
+  new_data$semester_cos <- cos(pi * new_data$sequence_index)
+  new_data$annual_sin <- sin(2 * pi * new_data$sequence_index / 4)
+  new_data$annual_cos <- cos(2 * pi * new_data$sequence_index / 4)
+  new_data
+}
+
+scenario_profiles <- data.frame(
+  Scenario = c("On-track checkpoint", "Attendance watch", "Priority support"),
+  grade_level = factor(c(10, 9, 11), levels = levels(train_data$grade_level)),
+  course_track = factor(c("regular", "regular", "honors"), levels = levels(train_data$course_track)),
+  assessment_window = factor(
+    c("beginning_of_year", "beginning_of_year", "end_of_year"),
+    levels = levels(train_data$assessment_window)
+  ),
+  next_assessment_window = factor(
+    c("end_of_year", "end_of_year", "beginning_of_year"),
+    levels = levels(train_data$next_assessment_window)
+  ),
+  attendance_category = factor(c("normal", "high", "at_risk"), levels = levels(train_data$attendance_category)),
+  attendance_probability = c(0.96, 0.84, 0.68),
+  current_readiness = c(72, 51, 39),
+  score = c(73, 50, 38),
+  current_absent = c(0, 0, 0),
+  current_readiness_missing = c(0, 0, 0),
+  school_year_offset = c(2, 2, 2),
+  sequence_index = c(5, 5, 6),
+  stringsAsFactors = FALSE
+)
+scenario_profiles$current_readiness_z <- (
+  scenario_profiles$current_readiness - readiness_mean
+) / readiness_sd
+scenario_profiles$sequence_z <- (
+  scenario_profiles$sequence_index - mean(readiness$sequence_index)
+) / sd(readiness$sequence_index)
+scenario_profiles$readiness_below_45 <- pmax(45 - scenario_profiles$current_readiness, 0)
+scenario_profiles$readiness_45_to_60 <- pmin(pmax(scenario_profiles$current_readiness - 45, 0), 15)
+scenario_profiles$readiness_above_60 <- pmax(scenario_profiles$current_readiness - 60, 0)
+scenario_profiles$semester_sin <- sin(pi * scenario_profiles$sequence_index)
+scenario_profiles$semester_cos <- cos(pi * scenario_profiles$sequence_index)
+scenario_profiles$annual_sin <- sin(2 * pi * scenario_profiles$sequence_index / 4)
+scenario_profiles$annual_cos <- cos(2 * pi * scenario_profiles$sequence_index / 4)
 
 scenario_ci <- predict_probability_ci(final_model, scenario_profiles)
-scenario_profile_output <- cbind(
-  scenario_profiles[, c(
-    "Scenario", "segment", "implementation_complexity", "contract_value",
-    "tenure_months", "product_usage_rate", "active_seats_ratio",
-    "training_completion_rate", "support_tickets_90d", "avg_response_hours",
-    "prior_incident"
-  )],
-  scenario_ci
-)
+scenario_profile_output <- cbind(scenario_profiles, scenario_ci)
 scenario_profile_display <- data.frame(
   Scenario = scenario_profile_output$Scenario,
-  Segment = scenario_profile_output$segment,
-  Complexity = scenario_profile_output$implementation_complexity,
-  Usage = format_pct(scenario_profile_output$product_usage_rate),
-  Support_tickets_90d = scenario_profile_output$support_tickets_90d,
-  Response_hours = scenario_profile_output$avg_response_hours,
-  Prior_incident = scenario_profile_output$prior_incident,
+  Grade = scenario_profile_output$grade_level,
+  Track = scenario_profile_output$course_track,
+  Window = scenario_profile_output$assessment_window,
+  Attendance = scenario_profile_output$attendance_category,
+  Current_readiness = format_num(scenario_profile_output$current_readiness, 1),
   Predicted_risk = format_pct(scenario_profile_output$PredictedRisk),
   CI_95 = paste0(
     format_pct(scenario_profile_output$Lower),
@@ -475,18 +579,17 @@ scenario_profile_display <- data.frame(
   stringsAsFactors = FALSE
 )
 
-usage_grid <- seq(0.25, 0.90, length.out = 80)
+readiness_grid <- seq(
+  max(15, floor(min(readiness$current_readiness))),
+  min(95, ceiling(max(readiness$current_readiness))),
+  length.out = 100
+)
 scenario_curve <- do.call(rbind, lapply(seq_len(nrow(scenario_profiles)), function(row_id) {
-  new_data <- scenario_profiles[rep(row_id, length(usage_grid)), ]
-  new_data$product_usage_rate <- usage_grid
-  new_data$active_seats_ratio <- pmin(
-    0.98,
-    pmax(0.02, scenario_profiles$active_seats_ratio[row_id] + 0.45 * (usage_grid - scenario_profiles$product_usage_rate[row_id]))
-  )
+  new_data <- make_profile_data(readiness_grid, scenario_profiles[row_id, ])
   pred <- predict_probability_ci(final_model, new_data)
   data.frame(
     Scenario = scenario_profiles$Scenario[row_id],
-    ProductUsageRate = usage_grid,
+    CurrentReadiness = readiness_grid,
     PredictedRisk = pred$PredictedRisk,
     Lower = pred$Lower,
     Upper = pred$Upper,
@@ -509,7 +612,8 @@ write.csv(subgroup_display, file.path("reports", "subgroup_calibration.csv"), ro
 write.csv(sensitivity_comparison, file.path("reports", "sensitivity_comparison.csv"), row.names = FALSE)
 write.csv(risk_category_display, file.path("reports", "risk_categories.csv"), row.names = FALSE)
 write.csv(scenario_profile_display, file.path("reports", "scenario_profiles.csv"), row.names = FALSE)
-write.csv(scenario_curve, file.path("reports", "scenario_usage_curve.csv"), row.names = FALSE)
+write.csv(scenario_curve, file.path("reports", "scenario_readiness_curve.csv"), row.names = FALSE)
+write.csv(family_review, file.path("reports", "parametric_family_review.csv"), row.names = FALSE)
 
 saveRDS(
   list(
@@ -532,7 +636,7 @@ ordered_models <- model_comparison[order(model_comparison$CV_LogLoss, decreasing
 y_pos <- seq_len(nrow(ordered_models))
 x_min <- min(ordered_models$CV_LogLoss - ordered_models$CV_LogLoss_SD) - 0.01
 x_max <- max(ordered_models$CV_LogLoss + ordered_models$CV_LogLoss_SD) + 0.01
-par(mar = c(5, 13, 4, 2))
+par(mar = c(5, 15, 4, 2))
 plot(
   ordered_models$CV_LogLoss,
   y_pos,
@@ -563,6 +667,86 @@ legend(
 )
 dev.off()
 
+png(file.path("figures", "shape_discovery.png"), width = 1300, height = 700, res = 150)
+par(mfrow = c(1, 2), mar = c(5, 5, 4, 2))
+rank_groups <- cut(
+  rank(train_data$current_readiness, ties.method = "first"),
+  breaks = seq(0, nrow(train_data), length.out = 13),
+  include.lowest = TRUE,
+  labels = seq_len(12)
+)
+binned <- aggregate(
+  cbind(support_risk_next, current_readiness) ~ rank_groups,
+  train_data,
+  mean
+)
+plot(
+  binned$current_readiness,
+  binned$support_risk_next,
+  pch = 19,
+  col = "#1B6CA8",
+  xlab = "Current readiness",
+  ylab = "Observed next-window support risk",
+  ylim = c(0, 1),
+  main = "Nonparametric Shape Check"
+)
+for (bandwidth in c(4, 8, 12)) {
+  smooth <- ksmooth(
+    train_data$current_readiness,
+    train_data$support_risk_next,
+    kernel = "normal",
+    bandwidth = bandwidth,
+    x.points = readiness_grid
+  )
+  lines(smooth$x, pmin(pmax(smooth$y, 0), 1), lwd = 2)
+}
+grid(col = "#E0E0E0")
+legend(
+  "topright",
+  legend = c("Binned risk", "h = 4", "h = 8", "h = 12"),
+  pch = c(19, NA, NA, NA),
+  lty = c(NA, 1, 1, 1),
+  lwd = c(NA, 2, 2, 2),
+  col = c("#1B6CA8", "#000000", "#666666", "#999999"),
+  bty = "n"
+)
+
+typical_profile <- scenario_profiles[1, ]
+typical_grid <- make_profile_data(readiness_grid, typical_profile)
+curve_models <- c(
+  "Linear readiness",
+  "Quadratic readiness",
+  "Piecewise readiness",
+  "Spline readiness benchmark"
+)
+plot(
+  range(readiness_grid),
+  c(0, 1),
+  type = "n",
+  xlab = "Current readiness",
+  ylab = "Predicted next-window support risk",
+  main = "Parametric Family Search"
+)
+curve_cols <- c("#555555", "#8C2D19", "#1B6CA8", "#2D7D46")
+for (i in seq_along(curve_models)) {
+  model_name <- curve_models[i]
+  lines(
+    readiness_grid,
+    safe_predict_glm(candidate_fits[[model_name]], typical_grid),
+    lwd = ifelse(model_name == selected_model_name, 3, 2),
+    col = curve_cols[i]
+  )
+}
+grid(col = "#E0E0E0")
+legend(
+  "topright",
+  legend = curve_models,
+  col = curve_cols,
+  lwd = ifelse(curve_models == selected_model_name, 3, 2),
+  bty = "n"
+)
+dev.off()
+
 png(file.path("figures", "roc_calibration.png"), width = 1200, height = 620, res = 150)
 par(mfrow = c(1, 2), mar = c(5, 5, 4, 2))
 plot(
@@ -577,7 +761,6 @@ plot(
 )
 abline(0, 1, lty = 2, col = "#888888")
 grid(col = "#E0E0E0")
-
 plot(
   calibration$MeanPredicted,
   calibration$ObservedRate,
@@ -587,7 +770,7 @@ plot(
   xlim = c(0, max(calibration$MeanPredicted, calibration$ObservedRate) * 1.15),
   ylim = c(0, max(calibration$MeanPredicted, calibration$ObservedRate) * 1.15),
   xlab = "Mean predicted risk",
-  ylab = "Observed escalation rate",
+  ylab = "Observed support-risk rate",
   main = "Holdout Calibration by Risk Band"
 )
 abline(0, 1, lty = 2, col = "#666666")
@@ -605,9 +788,9 @@ plot(
   lwd = 2,
   col = "#1B6CA8",
   ylim = c(0, 1),
-  xlab = "Review threshold",
+  xlab = "Support-review threshold",
   ylab = "Sensitivity / PPV",
-  main = "Threshold Tradeoffs for Account Review"
+  main = "Threshold Tradeoffs for Student Support Review"
 )
 lines(thresholds$Threshold, thresholds$PPV, type = "b", pch = 17, lwd = 2, col = "#8C2D19")
 par(new = TRUE)
@@ -624,7 +807,7 @@ plot(
   ylim = c(0, 1)
 )
 axis(4)
-mtext("Share of accounts flagged", side = 4, line = 3)
+mtext("Share of students flagged", side = 4, line = 3)
 grid(col = "#E0E0E0")
 legend(
   "topright",
@@ -646,18 +829,17 @@ plot(
   col = rgb(27, 108, 168, maxColorValue = 255, alpha = 120),
   xlab = "Primary predicted risk",
   ylab = "Sensitivity predicted risk",
-  main = "Prediction Stability"
+  main = "Prediction Stability Under Lower Cut Point"
 )
 abline(0, 1, lty = 2, col = "#555555")
 grid(col = "#E0E0E0")
-
 hist(
   sensitivity_predictions - final_predictions,
   breaks = 24,
   col = "#C9DCE8",
   border = "#FFFFFF",
   xlab = "Sensitivity minus primary prediction",
-  main = "Missing Training Assumption Impact"
+  main = "Risk Threshold Sensitivity"
 )
 abline(v = 0, lwd = 2, col = "#8C2D19")
 dev.off()
@@ -671,7 +853,7 @@ barplot(
   border = "#FFFFFF",
   ylim = c(0, max(lift_table$ObservedRate) * 1.25),
   xlab = "Risk decile, highest predicted risk first",
-  ylab = "Observed escalation rate",
+  ylab = "Observed support-risk rate",
   main = "Lift by Predicted Risk Decile"
 )
 abline(h = mean(holdout_data[[outcome]]), lty = 2, col = "#8C2D19", lwd = 2)
@@ -689,7 +871,7 @@ plot(
   ylim = c(0, 1)
 )
 axis(4)
-mtext("Cumulative event capture", side = 4, line = 3)
+mtext("Cumulative risk capture", side = 4, line = 3)
 legend(
   "topright",
   legend = c("Observed rate", "Base event rate", "Cumulative capture"),
@@ -702,31 +884,31 @@ legend(
 )
 dev.off()
 
-png(file.path("figures", "scenario_usage_curves.png"), width = 1200, height = 720, res = 150)
+png(file.path("figures", "scenario_readiness_curves.png"), width = 1200, height = 720, res = 150)
 par(mar = c(5, 5, 4, 2))
 plot(
-  range(scenario_curve$ProductUsageRate),
+  range(scenario_curve$CurrentReadiness),
   range(c(scenario_curve$Lower, scenario_curve$Upper)),
   type = "n",
-  xlab = "Product usage rate",
-  ylab = "Predicted escalation risk",
+  xlab = "Current readiness",
+  ylab = "Predicted next-window support risk",
   main = "Scenario Risk Curves with 95% Confidence Bands"
 )
 curve_colors <- c(
-  "Stable renewal" = "#2D7D46",
-  "Enablement watchlist" = "#1B6CA8",
-  "Priority intervention" = "#8C2D19"
+  "On-track checkpoint" = "#2D7D46",
+  "Attendance watch" = "#1B6CA8",
+  "Priority support" = "#8C2D19"
 )
 for (scenario in unique(scenario_curve$Scenario)) {
   rows <- scenario_curve[scenario_curve$Scenario == scenario, ]
   polygon(
-    c(rows$ProductUsageRate, rev(rows$ProductUsageRate)),
+    c(rows$CurrentReadiness, rev(rows$CurrentReadiness)),
     c(rows$Lower, rev(rows$Upper)),
     col = adjustcolor(curve_colors[[scenario]], alpha.f = 0.14),
     border = NA
   )
   lines(
-    rows$ProductUsageRate,
+    rows$CurrentReadiness,
     rows$PredictedRisk,
     lwd = 2,
     col = curve_colors[[scenario]]

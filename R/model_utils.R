@@ -331,9 +331,9 @@ make_decile_lift_table <- function(y, p, groups = 10) {
 }
 
 make_decision_economics <- function(threshold_table, review_cost = 750,
-                                    escalation_cost = 12000,
+                                    case_value = 12000,
                                     intervention_effect = 0.55) {
-  avoided_loss <- threshold_table$EventsCaptured * escalation_cost * intervention_effect
+  avoided_loss <- threshold_table$EventsCaptured * case_value * intervention_effect
   review_cost_total <- threshold_table$Flagged * review_cost
   data.frame(
     Threshold = threshold_table$Threshold,
@@ -366,7 +366,7 @@ make_subgroup_calibration <- function(data, group_var, y, p) {
 
 risk_category <- function(p) {
   cut(p,
-    breaks = c(-Inf, 0.10, 0.20, 0.35, Inf),
+    breaks = c(-Inf, 0.35, 0.50, 0.65, Inf),
     labels = c("Monitor", "Watch", "Review", "Priority"),
     right = FALSE
   )

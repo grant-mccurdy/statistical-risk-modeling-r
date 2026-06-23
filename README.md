@@ -1,15 +1,17 @@
 # Statistical Risk Modeling in R
 
-Public-safe statistical risk modeling project in R: built an interpretable
-probability model, compared candidate models, validated performance, translated
-predictions into risk categories, and documented decision-support implications.
+Public-safe education analytics project in R: built an interpretable
+probability model, compared candidate parametric model families, validated
+performance, translated predictions into support-risk categories, and documented
+decision-support implications for an executive audience.
 
-This project demonstrates an end-to-end business analytics workflow using
-synthetic B2B account-risk data. The modeled outcome is whether an account
-requires an escalation review in the next quarter. The analysis is designed for
-business analytics, BI, and data strategy portfolio review: it emphasizes
-method clarity, validation, model diagnostics, and executive-facing
-communication rather than private coursework context.
+The project models whether a public-safe assessment transition is likely to
+require support review at the next assessment window. The extract uses synthetic
+identifiers and generalized assessment behavior from a bootstrapped/simulated
+education data pipeline; it is not a real student-record release. The project is
+designed for business analytics, BI, education analytics, and data strategy
+portfolio review: the emphasis is statistical model discovery, validation,
+calibration, threshold interpretation, and clear communication.
 
 Portfolio page:
 https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html
@@ -20,42 +22,45 @@ Open the knitted PDF report first:
 
 [reports/statistical_risk_modeling_report.pdf](reports/statistical_risk_modeling_report.pdf)
 
-This is the primary reviewer artifact. It contains the executive summary,
-model comparison, validation metrics, diagnostics, threshold interpretation,
-sensitivity analysis, scenario profiles, and decision-support implications in a
-single polished report.
+This is the primary reviewer artifact. It puts the recommendation and direct
+answers first, then moves into model discovery, validation metrics,
+diagnostics, threshold interpretation, sensitivity analysis, scenario profiles,
+and public-safety notes.
+
+![Nonparametric and parametric shape discovery](figures/shape_discovery.png)
 
 ## What This Project Demonstrates
 
-- Synthetic public-safe data generation for a binary risk outcome
+- Public-safe bootstrapped/simulated education extract and reproducible
+  modeling table
 - Logistic regression / GLM probability modeling in R
-- Candidate model comparison using repeated stratified cross-validation
-- Flexible spline benchmark to test whether nonlinear model families improve
-  validation enough to justify added complexity
+- Nonparametric shape exploration before parametric model selection
+- Candidate-family comparison across linear, polynomial, piecewise, periodic,
+  and spline specifications
+- Repeated stratified cross-validation using log loss as the primary criterion
 - Holdout validation with AUC, log loss, and Brier score
 - Bootstrap uncertainty intervals for holdout metrics
 - Coefficient and odds-ratio interpretation
 - ROC, lift, calibration, and subgroup diagnostics
-- Sensitivity analysis for a conservative missing-data assumption
-- Risk-threshold interpretation and illustrative operating economics
+- Sensitivity analysis for an alternate support-risk threshold
+- Risk-threshold interpretation and illustrative operating tradeoffs
 - Scenario profiles with confidence intervals for executive communication
-- Executive-ready written summary and resume bullets
 
 ## Reviewer Path
 
 1. Open `reports/statistical_risk_modeling_report.pdf` for the primary preview
    report.
 2. Read `reports/executive_brief.md` for the one-page leadership summary.
-3. Open the portfolio page for the public project brief and reviewer route.
-4. Review `docs/model-card.md` for intended use, limitations, and monitoring.
+3. Review `docs/model-card.md` for intended use, limitations, and monitoring.
+4. Review `docs/data-dictionary.md` for modeling table definitions.
 5. Review `docs/methodology.md` for modeling choices and validation logic.
 6. Inspect `R/` for the reproducible base-R implementation.
-7. Run `make all` to regenerate the synthetic dataset, model artifacts,
+7. Run `make all` to regenerate the public-safe extract, model artifacts,
    report, figures, and public-safety validation.
 
 ## Quick Start
 
-The build is intentionally package-free. It requires only R and `make`.
+The core build uses base R and `make`.
 
 ```bash
 cd /home/grant/repos/public/statistical-risk-modeling-r
@@ -71,11 +76,10 @@ Rscript --vanilla R/render_markdown_report.R
 Rscript --vanilla R/validate_public_safety.R
 ```
 
-Optional RMarkdown/PDF rendering is available when `rmarkdown`, Pandoc, and a
-LaTeX engine such as `xelatex` are installed:
+Optional PDF rendering is available when `rmarkdown`, Pandoc, and a LaTeX
+engine such as `xelatex` are installed:
 
 ```bash
-make report-rmd
 make report-pdf
 ```
 
@@ -92,10 +96,13 @@ statistical-risk-modeling-r/
 │   └── validate_public_safety.R
 ├── data/
 │   ├── raw/
-│   │   └── README.md
+│   │   ├── README.md
+│   │   └── synthetic_education_assessment_long.csv
 │   └── processed/
 ├── docs/
 │   ├── methodology.md
+│   ├── data-dictionary.md
+│   ├── model-card.md
 │   └── public-safety.md
 ├── figures/
 ├── reports/
@@ -113,11 +120,14 @@ statistical-risk-modeling-r/
 
 The generated evidence packet includes:
 
-- `data/processed/synthetic_account_risk.csv`
-- `reports/statistical_risk_modeling_report.md`
+- `data/raw/synthetic_education_assessment_long.csv`
+- `data/processed/education_readiness_risk.csv`
 - `reports/statistical_risk_modeling_report.pdf`
+- `reports/statistical_risk_modeling_report.md`
 - `reports/executive_brief.md`
+- `docs/data-dictionary.md`
 - `docs/model-card.md`
+- `reports/parametric_family_review.csv`
 - `reports/model_comparison.csv`
 - `reports/final_metrics.csv`
 - `reports/metric_uncertainty.csv`
@@ -130,22 +140,23 @@ The generated evidence packet includes:
 - `reports/subgroup_calibration.csv`
 - `reports/sensitivity_comparison.csv`
 - `reports/scenario_profiles.csv`
+- `figures/shape_discovery.png`
 - `figures/model_comparison.png`
 - `figures/roc_calibration.png`
 - `figures/threshold_tradeoff.png`
 - `figures/lift_chart.png`
 - `figures/sensitivity_analysis.png`
-- `figures/scenario_usage_curves.png`
+- `figures/scenario_readiness_curves.png`
 
 ## Validation Commands
 
 ```bash
-make all       # rebuilds data, models, report, figures, and safety checks
-make data      # regenerates the synthetic data
-make model     # runs model comparison and diagnostics
-make report    # renders the Markdown report
+make all        # rebuilds data, models, report, figures, and safety checks
+make data       # regenerates the modeling extract
+make model      # runs model comparison and diagnostics
+make report     # renders the Markdown report
 make report-pdf # renders the knitted PDF report
-make validate  # checks for private-source identifiers and raw data leakage
+make validate   # checks public-safety rules
 ```
 
 ## Dependency Notes
@@ -161,22 +172,10 @@ The optional knitted PDF target uses `rmarkdown`, `knitr`, Pandoc, and
 
 ## Public Safety
 
-The repository uses fully synthetic account-risk records. It does not include
+The repository uses public-safe education assessment records with simulated
+identifiers and generalized score/readiness behavior. It does not include
 private course prompts, instructor materials, exams, syllabi, lecture
-transcripts, raw coursework files, real student data, real patient data,
-credentials, or private exports.
+transcripts, raw private coursework files, real student-identifiable data, real
+patient data, credentials, or private exports.
 
 See `docs/public-safety.md` for the release notes and exclusion policy.
-
-## Resume Bullets
-
-- Built a public-safe R risk-modeling project using synthetic account data,
-  logistic regression, repeated cross-validation, AUC/log-loss validation,
-  bootstrap uncertainty intervals, and calibration diagnostics to support
-  decision-ready probability modeling.
-- Compared interpretable GLM candidates against a flexible spline benchmark,
-  translated coefficients into odds ratios, and documented threshold economics
-  for account-review prioritization.
-- Produced an executive brief, model card, scenario profiles, and reproducible
-  base-R pipeline that turns synthetic records into metrics, figures,
-  sensitivity checks, and portfolio-ready evidence.
