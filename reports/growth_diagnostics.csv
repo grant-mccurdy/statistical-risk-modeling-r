@@ -1,0 +1,6 @@
+"Diagnostic","Estimate","Interpretation"
+"Holdout RMSE","4.399","Typical holdout prediction error on BOY/EOY gain"
+"Holdout MAE","3.512","Average absolute holdout prediction error"
+"Holdout R-squared","0.181","Share of holdout gain variation explained by the model"
+"Residual mean, all pairs","0.000","Near 0 means expected gain is centered overall"
+"Residual SD, all pairs","4.599","Residual spread used to judge section signal uncertainty"

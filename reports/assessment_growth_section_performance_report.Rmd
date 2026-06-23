@@ -1,6 +1,6 @@
 ---
-title: "Education Readiness Risk Modeling in R"
-subtitle: "Public-Safe Support Review Prioritization"
+title: "Assessment Growth and Section Performance Analytics in R"
+subtitle: "Public-Safe BOY/EOY Improvement Study"
 author: "Grant McCurdy"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
@@ -17,12 +17,12 @@ header-includes:
 
 ```{r build, include=FALSE, message=FALSE, warning=FALSE}
 source(file.path("R", "generate_synthetic_data.R"))
-source(file.path("R", "fit_risk_models.R"))
+source(file.path("R", "fit_growth_models.R"))
 ```
 
 ```{r report, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
 source(file.path("R", "render_markdown_report.R"))
-report_lines <- readLines(file.path("reports", "statistical_risk_modeling_report.md"))
+report_lines <- readLines(file.path("reports", "assessment_growth_section_performance_report.md"))
 if (length(report_lines) > 0 && grepl("^# ", report_lines[1])) {
   report_lines <- report_lines[-1]
   if (length(report_lines) > 0 && report_lines[1] == "") {

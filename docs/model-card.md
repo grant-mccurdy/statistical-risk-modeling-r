@@ -2,41 +2,48 @@
 
 ## Intended Use
 
-Prioritize public-safe assessment transitions for human support-review planning in a public-safe portfolio project.
+Estimate expected BOY/EOY assessment improvement and identify public-safe section-year groups whose growth is higher or lower than expected for instructional review.
 
 ## Not Intended For
 
-Automated academic decisions, real student intervention assignment, grading, discipline, admissions, employment, clinical decisions, or use with private data without separate validation and governance.
+Teacher evaluation, compensation, discipline, student placement, grading, employment, admissions, clinical decisions, or automated decisions with real student or personnel data.
 
 ## Data
 
-Public-safe education assessment records with 3,322 modeled transitions, simulated identifiers, generalized score/readiness behavior, and no real student-identifiable records.
+Public-safe paired BOY/EOY assessment records with 1,737 modeled pairs, simulated identifiers, generalized score/readiness behavior, and no real student-identifiable or personnel records.
 
 ## Model
 
-Selected model: Piecewise readiness. Candidate families include context-only, linear readiness, polynomial readiness, piecewise readiness, periodic benchmark, and spline benchmark specifications.
+Selected expected-growth model: Readiness-augmented. Candidate families include context-only, linear BOY score, quadratic BOY score, piecewise BOY score, readiness-augmented, and spline benchmark specifications.
 
 ## Performance
 
-| Metric | Estimate | 95% CI |
-| --- | --- | --- |
-| LogLoss | 0.309 | 0.268 to 0.352 |
-| Brier | 0.093 | 0.079 to 0.107 |
-| AUC | 0.938 | 0.919 to 0.955 |
-
-## Calibration
-
-| Diagnostic | Estimate | Interpretation |
-| --- | --- | --- |
-| Calibration intercept | 0.165 | Near 0 means predicted risk is not systematically high or low |
-| Calibration slope | 1.025 | Near 1 means predicted probabilities are not overly extreme or compressed |
+| Metric | Value |
+| --- | --- |
+| Selected model | Readiness-augmented |
+| Selection rule | Simplest non-benchmark model within one standard error of best repeated-CV RMSE |
+| Training paired records | 1,389 |
+| Holdout paired records | 348 |
+| Repeated CV folds | 5 |
+| Repeated CV repeats | 6 |
+| CV RMSE | 4.700 |
+| CV MAE | 3.773 |
+| CV R-squared | 0.159 |
+| Holdout RMSE | 4.399 |
+| Holdout MAE | 3.512 |
+| Holdout R-squared | 0.181 |
+| Mean BOY score | 48.5 |
+| Mean EOY score | 54.2 |
+| Mean raw BOY/EOY gain | 5.72 |
+| Section-year groups | 174 |
 
 ## Monitoring Recommendations
 
-- Track calibration by course track, assessment window, and attendance group.
-- Recheck thresholds when support capacity or readiness definitions change.
-- Refit the model if the assessment sequence, attendance process, or student mix materially changes.
+- Track BOY/EOY pairing rates and missing EOY assessments.
+- Monitor section sizes before ranking or escalating section signals.
+- Refit the model when course mix, assessment design, or attendance patterns change.
+- Compare raw and adjusted growth before communicating section findings.
 
 ## Public-Safety Boundary
 
-No private coursework prompts, raw private source datasets, credentials, real student records, patient records, or customer records are included.
+No private coursework prompts, raw private source datasets, credentials, real student records, real personnel records, patient records, or customer records are included.

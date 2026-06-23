@@ -1,0 +1,7 @@
+"Family","Why_tested","Decision","CV_RMSE","Holdout_RMSE"
+"Context baseline","Tests whether grade, course, attendance, and year context are enough.","Baseline comparator.","5.078","4.802"
+"Linear BOY score","Adds the main baseline achievement signal.","Useful simple challenger.","4.734","4.428"
+"Quadratic BOY score","Tests whether gain changes nonlinearly for very low or high BOY scores.","Compared for nonlinear gain shape.","4.737","4.427"
+"Piecewise BOY score","Uses interpretable score regions to handle floor and ceiling effects.","Interpretable nonlinear challenger.","4.741","4.432"
+"Readiness-augmented","Checks whether readiness adds signal beyond the observed BOY score.","Selected operating model.","4.700","4.399"
+"Spline BOY score benchmark","Flexible benchmark for the baseline-score curve.","Benchmark only; not selected unless it materially improves validation.","4.745","4.422"

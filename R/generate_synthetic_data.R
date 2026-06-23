@@ -208,36 +208,111 @@ write.csv(
   row.names = FALSE
 )
 
-profile <- data.frame(
+assessment$present_score <- suppressWarnings(as.numeric(assessment$present_student_score))
+assessment$readiness_after <- suppressWarnings(as.numeric(assessment$posterior_readiness_after))
+
+boy <- assessment[assessment$assessment_window == "beginning_of_year", ]
+eoy <- assessment[assessment$assessment_window == "end_of_year", ]
+
+growth_pairs <- merge(
+  boy,
+  eoy,
+  by = c("sis_user_id", "school_year"),
+  suffixes = c("_boy", "_eoy")
+)
+
+growth_pairs$same_section <- growth_pairs$section_id_boy == growth_pairs$section_id_eoy
+growth_pairs$same_teacher <- growth_pairs$teacher_id_boy == growth_pairs$teacher_id_eoy
+growth_pairs$boy_present <- tolower(as.character(growth_pairs$is_present_boy)) == "true"
+growth_pairs$eoy_present <- tolower(as.character(growth_pairs$is_present_eoy)) == "true"
+growth_pairs$analysis_included <- growth_pairs$same_section &
+  growth_pairs$same_teacher &
+  growth_pairs$boy_present &
+  growth_pairs$eoy_present &
+  !is.na(growth_pairs$present_score_boy) &
+  !is.na(growth_pairs$present_score_eoy)
+
+growth_data <- growth_pairs[growth_pairs$analysis_included, ]
+growth_data$score_gain <- growth_data$present_score_eoy - growth_data$present_score_boy
+growth_data$readiness_gain <- growth_data$readiness_after_eoy - growth_data$readiness_after_boy
+growth_data$boy_score <- growth_data$present_score_boy
+growth_data$eoy_score <- growth_data$present_score_eoy
+growth_data$boy_readiness <- growth_data$readiness_after_boy
+growth_data$eoy_readiness <- growth_data$readiness_after_eoy
+growth_data$boy_score_z <- as.numeric(scale(growth_data$boy_score))
+growth_data$boy_readiness_z <- as.numeric(scale(growth_data$boy_readiness))
+growth_data$boy_below_45 <- pmax(45 - growth_data$boy_score, 0)
+growth_data$boy_45_to_60 <- pmin(pmax(growth_data$boy_score - 45, 0), 15)
+growth_data$boy_above_60 <- pmax(growth_data$boy_score - 60, 0)
+growth_data$annual_sin <- sin(2 * pi * growth_data$sequence_index_boy / 4)
+growth_data$annual_cos <- cos(2 * pi * growth_data$sequence_index_boy / 4)
+
+growth_data <- growth_data[
+  ,
+  c(
+    "school_year", "school_year_offset_boy", "sis_user_id",
+    "grade_level_boy", "course_id_boy", "course_name_boy",
+    "course_track_boy", "section_id_boy", "section_label_boy",
+    "teacher_id_boy", "teacher_label_boy", "attendance_category_boy",
+    "attendance_probability_boy", "boy_score", "eoy_score",
+    "boy_readiness", "eoy_readiness", "score_gain", "readiness_gain",
+    "boy_score_z", "boy_readiness_z", "boy_below_45",
+    "boy_45_to_60", "boy_above_60", "annual_sin", "annual_cos"
+  )
+]
+
+names(growth_data) <- c(
+  "school_year", "school_year_offset", "sis_user_id", "grade_level",
+  "course_id", "course_name", "course_track", "section_id",
+  "section_label", "teacher_id", "teacher_label", "attendance_category",
+  "attendance_probability", "boy_score", "eoy_score", "boy_readiness",
+  "eoy_readiness", "score_gain", "readiness_gain", "boy_score_z",
+  "boy_readiness_z", "boy_below_45", "boy_45_to_60", "boy_above_60",
+  "annual_sin", "annual_cos"
+)
+
+growth_data <- growth_data[order(growth_data$section_id, growth_data$sis_user_id), ]
+write.csv(
+  growth_data,
+  file.path("data", "processed", "education_section_growth.csv"),
+  row.names = FALSE
+)
+
+growth_profile <- data.frame(
   Measure = c(
     "Raw assessment rows",
-    "Modeled transitions",
+    "BOY/EOY candidate pairs",
+    "Included paired records",
     "Unique public-safe student IDs",
-    "Support-risk event rate",
-    "Current nonparticipation rate",
-    "Next-window nonparticipation rate",
-    "Median current readiness",
-    "Included assessment windows"
+    "Unique section-year groups",
+    "Unique simulated teachers",
+    "Mean BOY score",
+    "Mean EOY score",
+    "Mean BOY/EOY gain",
+    "Median section paired records"
   ),
   Value = c(
     format(nrow(assessment), big.mark = ","),
-    format(nrow(risk_data), big.mark = ","),
-    format(length(unique(risk_data$sis_user_id)), big.mark = ","),
-    format_pct(mean(risk_data$support_risk_next)),
-    format_pct(mean(risk_data$current_absent)),
-    format_pct(mean(!risk_data$next_present)),
-    format_num(median(risk_data$current_readiness), 1),
-    paste(sort(unique(risk_data$assessment_window)), collapse = ", ")
+    format(nrow(growth_pairs), big.mark = ","),
+    format(nrow(growth_data), big.mark = ","),
+    format(length(unique(growth_data$sis_user_id)), big.mark = ","),
+    format(length(unique(paste(growth_data$section_id, growth_data$school_year))), big.mark = ","),
+    format(length(unique(growth_data$teacher_id)), big.mark = ","),
+    format_num(mean(growth_data$boy_score), 1),
+    format_num(mean(growth_data$eoy_score), 1),
+    format_num(mean(growth_data$score_gain), 1),
+    format_num(median(as.numeric(table(paste(growth_data$section_id, growth_data$school_year)))), 0)
   ),
   stringsAsFactors = FALSE
 )
 
 write.csv(
-  profile,
-  file.path("reports", "education_extract_profile.csv"),
+  growth_profile,
+  file.path("reports", "growth_extract_profile.csv"),
   row.names = FALSE
 )
 
 message("Wrote data/processed/education_readiness_risk.csv")
+message("Wrote data/processed/education_section_growth.csv")
 message("Rows: ", nrow(risk_data))
-message("Support-risk event rate: ", format_pct(mean(risk_data$support_risk_next)))
+message("Growth rows: ", nrow(growth_data))

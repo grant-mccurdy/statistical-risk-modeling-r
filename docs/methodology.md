@@ -2,88 +2,89 @@
 
 ## Analytical Question
 
-Which public-safe assessment transitions are most likely to require support
-review at the next assessment window, and how should a support team translate
-predicted probabilities into review thresholds?
+Which public-safe course sections show unusually high or low BOY/EOY assessment
+improvement after accounting for starting performance, readiness, attendance,
+course track, grade level, and school-year context?
 
-The project treats the model as decision support. Predictions rank public-safe
-assessment transitions for human review and planning; they are not automated
-academic decisions.
+The project treats section and teacher summaries as instructional review
+signals. They are not automated teacher evaluation, compensation, discipline, or
+personnel decisions.
 
-## Public-Safe Education Extract
+## Public-Safe BOY/EOY Extract
 
-The analysis starts from a public-safe assessment extract with one row per
-assessment window. Identifiers and institutional context are simulated, while
-score/readiness behavior is generalized from a bootstrapped assessment workflow.
-The modeling table converts consecutive assessment windows into prediction
-records: current-window information predicts whether the next window crosses
-the support-risk definition.
+The analysis starts from a public-safe assessment-window extract. The processed
+growth table pairs beginning-of-year and end-of-year records for the same
+simulated student in the same school year.
 
-The primary binary outcome is `support_risk_next`, defined as a next assessment
-score below 50 or next-window nonparticipation. A sensitivity outcome lowers
-the score cut point to 45.
+A pair is included only when:
 
-Predictors include:
+- BOY and EOY scores are both present
+- the section is the same at BOY and EOY
+- the simulated teacher is the same at BOY and EOY
 
-- Current readiness
-- Current assessment window
-- Course track
-- Grade level
-- Attendance category and attendance probability
-- Current assessment participation
-- Assessment sequence timing
+This design keeps the growth metric tied to a section experience. It also means
+the analysis excludes nonparticipating or section-changing pairs, so pairing
+rates should be monitored before operational use.
 
-## Model Discovery
+## Raw Improvement
 
-The workflow separates shape discovery from model selection.
+The headline raw metric is:
 
-First, binned risk rates and kernel smooths inspect the relationship between
-current readiness and next-window support risk. This identifies whether a simple
-linear probability shape is adequate or whether the curve has a threshold-like
-or nonlinear form.
+```text
+BOY/EOY gain = EOY score - BOY score
+```
 
-Second, candidate parametric logistic models are compared:
+For each section-year group, the report calculates mean BOY score, mean EOY
+score, mean gain, confidence intervals, and a one-sample t-test of gain against
+zero. This answers whether a section improved, but raw gain alone is not enough
+for fair section comparison.
+
+## Adjusted Growth Model
+
+Raw gains are adjusted because sections differ in starting score, readiness,
+attendance, course track, grade level, and school-year context. The model
+estimates expected BOY/EOY gain, then computes:
+
+```text
+adjusted growth residual = observed gain - expected gain
+```
+
+Candidate expected-growth models include:
 
 - Context baseline
-- Linear readiness
-- Quadratic readiness
-- Cubic polynomial readiness
-- Piecewise readiness
-- Periodic context benchmark
-- Spline readiness benchmark
+- Linear BOY score
+- Quadratic BOY score
+- Piecewise BOY score
+- Readiness-augmented
+- Spline BOY score benchmark
 
-The polynomial, periodic, and spline families are included to test whether a
-more flexible shape materially improves validated probability quality. The
-final operating model is selected from interpretable GLM candidates unless a
-benchmark clearly earns its added complexity.
+Model comparison uses repeated 5-fold cross-validation with RMSE as the primary
+criterion and MAE/R-squared as secondary metrics. The selected model is the
+simplest non-benchmark model within one standard error of the best repeated-CV
+RMSE.
 
-## Validation
+## Section Signals
 
-Model comparison uses repeated stratified 5-fold cross-validation on the
-training split. Log loss is the primary metric because the workflow needs
-probabilities that are useful on the risk scale. AUC and Brier score are
-reported as secondary metrics.
+Section-year adjusted signals are calculated from average residuals and then
+weighted toward zero for smaller groups. This reliability weighting prevents
+small sections from dominating the ranking.
 
-The selected model is then evaluated on a holdout split. Bootstrap intervals
-provide practical uncertainty ranges around holdout log loss, Brier score, and
-AUC.
+Signal categories are:
 
-## Diagnostics
+- Above expected
+- Within expected range
+- Below expected
+- Small group
+
+## Diagnostics and Sensitivity
 
 The diagnostic layer includes:
 
-- ROC curve and holdout AUC
-- Calibration table and calibration plot
-- Calibration intercept and slope
-- Bootstrap metric intervals
-- Decile lift and cumulative support-risk capture
-- Subgroup calibration by course track, assessment window, and attendance group
-- Threshold operating table
-- Sensitivity analysis for the alternate support-risk definition
-
-## Interpretation
-
-The report translates model coefficients into odds ratios and uses scenario
-profiles to show how predicted risk changes across readiness levels. Threshold
-tables convert probabilities into review workload, sensitivity, specificity,
-precision, and missed-risk tradeoffs.
+- Raw BOY/EOY gain distribution
+- Nonparametric BOY-score shape checks
+- Candidate model comparison
+- Holdout prediction diagnostics
+- Residual checks
+- Raw-vs-adjusted rank correlation
+- Top-section overlap between raw and adjusted rankings
+- Section-size sensitivity checks

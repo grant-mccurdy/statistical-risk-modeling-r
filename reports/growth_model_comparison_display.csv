@@ -1,0 +1,7 @@
+"Model","Selected","Role","Params","CV_RMSE","CV_SD","CV_MAE","CV_R2","Holdout_RMSE","Holdout_R2","Delta"
+"Readiness-augmented","Yes","Selection candidate",13,"4.700","0.010","3.773","0.159","4.399","0.181","0.000"
+"Linear BOY score","","Selection candidate",12,"4.734","0.009","3.782","0.147","4.428","0.170","0.034"
+"Quadratic BOY score","","Selection candidate",13,"4.737","0.010","3.786","0.146","4.427","0.171","0.037"
+"Piecewise BOY score","","Selection candidate",14,"4.741","0.010","3.789","0.145","4.432","0.169","0.041"
+"Spline BOY score benchmark","","Benchmark",15,"4.745","0.010","3.792","0.143","4.422","0.172","0.045"
+"Context baseline","","Selection candidate",10,"5.078","0.007","4.076","0.019","4.802","0.024","0.378"

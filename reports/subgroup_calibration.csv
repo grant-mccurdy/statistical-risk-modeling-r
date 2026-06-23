@@ -1,9 +1,0 @@
-"Subgroup","Level","N","Mean_predicted","Observed_rate","Calibration_gap","Observed_risks"
-"course_track","ap",211,"33.7%","39.3%","5.7%",83
-"course_track","honors",84,"33.9%","29.8%","-4.1%",25
-"course_track","regular",368,"64.0%","64.7%","0.6%",238
-"assessment_window","beginning_of_year",405,"45.4%","49.9%","4.5%",202
-"assessment_window","end_of_year",261,"58.4%","55.6%","-2.9%",145
-"attendance_category","at_risk",60,"53.7%","63.3%","9.6%",38
-"attendance_category","high",285,"49.6%","49.5%","-0.1%",141
-"attendance_category","normal",321,"50.7%","52.3%","1.7%",168

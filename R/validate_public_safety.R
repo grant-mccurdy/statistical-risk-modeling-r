@@ -28,7 +28,7 @@ prohibited_extensions <- c("\\.docx$", "\\.pdf$", "\\.pptx$", "\\.xlsx$")
 prohibited_binary_files <- project_files[
   grepl(paste(prohibited_extensions, collapse = "|"), project_files, ignore.case = TRUE)
 ]
-allowed_binary_files <- c("./reports/statistical_risk_modeling_report.pdf")
+allowed_binary_files <- c("./reports/assessment_growth_section_performance_report.pdf")
 prohibited_binary_files <- setdiff(prohibited_binary_files, allowed_binary_files)
 
 text_extensions <- paste(

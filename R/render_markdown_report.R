@@ -3,25 +3,21 @@ source(file.path("R", "model_utils.R"))
 ensure_project_dirs()
 
 required_tables <- c(
-  file.path("reports", "education_extract_profile.csv"),
-  file.path("reports", "model_comparison_display.csv"),
-  file.path("reports", "parametric_family_review.csv"),
-  file.path("reports", "final_metrics.csv"),
-  file.path("reports", "metric_uncertainty.csv"),
-  file.path("reports", "odds_ratios.csv"),
-  file.path("reports", "calibration_table.csv"),
-  file.path("reports", "calibration_diagnostics.csv"),
-  file.path("reports", "threshold_table.csv"),
-  file.path("reports", "decision_economics.csv"),
-  file.path("reports", "decile_lift.csv"),
-  file.path("reports", "subgroup_calibration.csv"),
-  file.path("reports", "sensitivity_comparison.csv"),
-  file.path("reports", "risk_categories.csv"),
-  file.path("reports", "scenario_profiles.csv")
+  file.path("reports", "growth_extract_profile.csv"),
+  file.path("reports", "growth_model_comparison_display.csv"),
+  file.path("reports", "growth_shape_review.csv"),
+  file.path("reports", "growth_final_metrics.csv"),
+  file.path("reports", "section_ttests.csv"),
+  file.path("reports", "section_adjusted_signals.csv"),
+  file.path("reports", "section_signal_highlights.csv"),
+  file.path("reports", "teacher_growth_summary.csv"),
+  file.path("reports", "course_growth_summary.csv"),
+  file.path("reports", "growth_diagnostics.csv"),
+  file.path("reports", "growth_sensitivity.csv")
 )
 
 if (!all(file.exists(required_tables))) {
-  source(file.path("R", "fit_risk_models.R"))
+  source(file.path("R", "fit_growth_models.R"))
 }
 
 read_display_csv <- function(path, check_names = TRUE) {
@@ -33,317 +29,215 @@ read_display_csv <- function(path, check_names = TRUE) {
   )
 }
 
-readiness <- read.csv(
-  file.path("data", "processed", "education_readiness_risk.csv"),
+growth <- read.csv(
+  file.path("data", "processed", "education_section_growth.csv"),
   stringsAsFactors = FALSE
 )
 
-extract_profile <- read_display_csv(file.path("reports", "education_extract_profile.csv"))
+profile <- read_display_csv(file.path("reports", "growth_extract_profile.csv"))
 model_comparison <- read_display_csv(
-  file.path("reports", "model_comparison_display.csv"),
+  file.path("reports", "growth_model_comparison_display.csv"),
   check_names = FALSE
 )
-family_review <- read_display_csv(file.path("reports", "parametric_family_review.csv"))
-final_metrics <- read_display_csv(file.path("reports", "final_metrics.csv"))
-metric_uncertainty <- read_display_csv(file.path("reports", "metric_uncertainty.csv"))
-odds_ratios <- read_display_csv(file.path("reports", "odds_ratios.csv"))
-calibration <- read_display_csv(file.path("reports", "calibration_table.csv"))
-calibration_diagnostics <- read_display_csv(file.path("reports", "calibration_diagnostics.csv"))
-thresholds <- read_display_csv(file.path("reports", "threshold_table.csv"))
-decision_economics <- read_display_csv(file.path("reports", "decision_economics.csv"))
-decile_lift <- read_display_csv(file.path("reports", "decile_lift.csv"))
-subgroup_calibration <- read_display_csv(file.path("reports", "subgroup_calibration.csv"))
-sensitivity <- read_display_csv(file.path("reports", "sensitivity_comparison.csv"))
-risk_categories <- read_display_csv(file.path("reports", "risk_categories.csv"))
-scenario_profiles <- read_display_csv(file.path("reports", "scenario_profiles.csv"))
+shape_review <- read_display_csv(file.path("reports", "growth_shape_review.csv"))
+final_metrics <- read_display_csv(file.path("reports", "growth_final_metrics.csv"))
+section_ttests <- read_display_csv(file.path("reports", "section_ttests.csv"))
+section_signals <- read_display_csv(file.path("reports", "section_adjusted_signals.csv"))
+section_highlights <- read_display_csv(file.path("reports", "section_signal_highlights.csv"))
+teacher_summary <- read_display_csv(file.path("reports", "teacher_growth_summary.csv"))
+course_summary <- read_display_csv(file.path("reports", "course_growth_summary.csv"))
+diagnostics <- read_display_csv(file.path("reports", "growth_diagnostics.csv"))
+sensitivity <- read_display_csv(file.path("reports", "growth_sensitivity.csv"))
 
 metric_value <- function(metric_name) {
   final_metrics$Value[final_metrics$Metric == metric_name][1]
 }
 
-clean_label <- function(x) {
-  x <- gsub("_", " ", x)
-  x <- gsub("beginning of year", "beginning-of-year", x, fixed = TRUE)
-  x <- gsub("end of year", "end-of-year", x, fixed = TRUE)
-  x <- gsub("at risk", "at-risk", x, fixed = TRUE)
-  x
+profile_value <- function(measure_name) {
+  profile$Value[profile$Measure == measure_name][1]
 }
-
-extract_profile$Value <- clean_label(extract_profile$Value)
-names(family_review) <- c("Family", "Why tested", "Decision", "CV loss", "Holdout AUC")
-names(model_comparison) <- c(
-  "Model", "Selected", "Role", "Params", "CV loss", "CV SD", "CV AUC",
-  "Holdout loss", "Holdout AUC", "Delta"
-)
-names(metric_uncertainty) <- c("Metric", "Estimate", "95% CI")
-names(odds_ratios) <- c("Predictor", "Scale", "Odds ratio", "95% CI", "p-value")
-names(calibration) <- c("Band", "N", "Pred", "Obs", "Expected", "Cases")
-names(calibration_diagnostics) <- c("Diagnostic", "Estimate", "Interpretation")
-names(thresholds) <- c("Threshold", "Flagged", "Flagged %", "Captured", "Sens", "Spec", "PPV", "NPV")
-names(decision_economics) <- c("Threshold", "Flagged", "Captured", "Benefit", "Cost", "Net")
-names(decile_lift) <- c("Decile", "N", "Pred", "Obs", "Cases", "Lift", "Capture")
-names(subgroup_calibration) <- c("Group", "Level", "N", "Pred", "Obs", "Gap", "Cases")
-subgroup_calibration$Group <- clean_label(subgroup_calibration$Group)
-subgroup_calibration$Level <- clean_label(subgroup_calibration$Level)
-names(risk_categories) <- c("Category", "Transitions", "Share", "Pred", "Obs", "Cases")
-names(sensitivity) <- c("Measure", "Primary", "Sensitivity")
-names(scenario_profiles) <- c("Scenario", "Grade", "Track", "Window", "Attendance", "Readiness", "Risk", "95% CI", "Category")
-scenario_profiles$Window <- clean_label(scenario_profiles$Window)
-scenario_profiles$Attendance <- clean_label(scenario_profiles$Attendance)
 
 selected_model <- metric_value("Selected model")
-holdout_rows <- metric_value("Holdout rows")
-holdout_auc <- metric_value("Holdout AUC")
-holdout_log_loss <- metric_value("Holdout log loss")
-holdout_brier <- metric_value("Holdout Brier score")
-cv_log_loss <- metric_value("CV log loss")
-cv_auc <- metric_value("CV AUC")
-holdout_event_rate <- metric_value("Holdout event rate")
-shape_result <- metric_value("Shape discovery result")
+included_pairs <- profile_value("Included paired records")
+section_groups <- profile_value("Unique section-year groups")
+teachers <- profile_value("Unique simulated teachers")
+mean_boy <- metric_value("Mean BOY score")
+mean_eoy <- metric_value("Mean EOY score")
+mean_gain <- metric_value("Mean raw BOY/EOY gain")
+holdout_rmse <- metric_value("Holdout RMSE")
+holdout_r2 <- metric_value("Holdout R-squared")
+category_counts <- table(section_signals$Category)
+above_expected <- ifelse("Above expected" %in% names(category_counts), category_counts[["Above expected"]], 0)
+below_expected <- ifelse("Below expected" %in% names(category_counts), category_counts[["Below expected"]], 0)
+within_expected <- ifelse("Within expected range" %in% names(category_counts), category_counts[["Within expected range"]], 0)
 
-threshold_50 <- thresholds[thresholds$Threshold == "50%", , drop = FALSE]
-if (nrow(threshold_50) == 0) {
-  threshold_50 <- thresholds[which.min(abs(as.numeric(gsub("%", "", thresholds$Threshold)) - 50)), , drop = FALSE]
+names(model_comparison) <- c(
+  "Model", "Selected", "Role", "Params", "CV RMSE", "CV SD", "CV MAE",
+  "CV R2", "Holdout RMSE", "Holdout R2", "Delta"
+)
+names(shape_review) <- c("Family", "Why tested", "Decision", "CV RMSE", "Holdout RMSE")
+names(section_ttests) <- c(
+  "Section", "Teacher", "Course", "Year", "N", "BOY", "EOY",
+  "Gain", "95% CI", "p-value", "q-value"
+)
+names(section_signals) <- c(
+  "Section", "Teacher", "Course", "Year", "N", "Raw gain", "Expected gain",
+  "Adjusted signal", "Residual CI", "Category"
+)
+names(section_highlights) <- c(
+  "Section", "Teacher", "Course", "Year", "N", "Raw gain", "Expected gain",
+  "Adjusted signal", "Category"
+)
+names(teacher_summary) <- c(
+  "Teacher", "Sections", "Records", "BOY", "EOY", "Raw gain",
+  "Expected gain", "Adjusted signal"
+)
+names(course_summary) <- c(
+  "Course", "Track", "Sections", "Records", "BOY", "EOY", "Raw gain",
+  "Expected gain", "Adjusted signal"
+)
+names(diagnostics) <- c("Diagnostic", "Estimate", "Interpretation")
+names(sensitivity) <- c("Measure", "Value")
+
+top_n <- function(df, n = 12) {
+  df[seq_len(min(nrow(df), n)), , drop = FALSE]
 }
 
-threshold_65 <- thresholds[thresholds$Threshold == "65%", , drop = FALSE]
-if (nrow(threshold_65) == 0) {
-  threshold_65 <- thresholds[which.min(abs(as.numeric(gsub("%", "", thresholds$Threshold)) - 65)), , drop = FALSE]
+short_section_label <- function(section, year) {
+  section <- sub("^Y[0-9]+-", "", section)
+  year <- paste0(substr(year, 3, 4), "-", substr(year, 8, 9))
+  paste(year, section)
 }
 
-top_two_capture <- decile_lift$Capture[decile_lift$Decile == 2][1]
-top_decile_lift <- decile_lift$Lift[decile_lift$Decile == 1][1]
-best_economic <- decision_economics[
-  which.max(as.numeric(gsub("[$, ]", "", decision_economics$Net))),
+raw_improvement_report <- top_n(section_ttests, 8)
+raw_improvement_report$Section <- short_section_label(
+  raw_improvement_report$Section,
+  raw_improvement_report$Year
+)
+raw_improvement_report <- raw_improvement_report[
   ,
+  c("Section", "N", "BOY", "EOY", "Gain", "95% CI", "p-value"),
   drop = FALSE
 ]
 
-risk_action_lookup <- data.frame(
-  Category = c("Monitor", "Watch", "Review", "Priority"),
-  Suggested_action = c(
-    "Routine monitoring",
-    "Check trend and attendance",
-    "Add to review queue",
-    "Review first if capacity is limited"
-  ),
-  stringsAsFactors = FALSE
+section_highlights_report <- section_highlights
+section_highlights_report$Section <- short_section_label(
+  section_highlights_report$Section,
+  section_highlights_report$Year
 )
-
-risk_category_actions <- merge(
-  risk_categories[, c("Category", "Transitions", "Obs")],
-  risk_action_lookup,
-  by = "Category",
-  all.x = TRUE,
-  sort = FALSE
-)
-risk_category_actions <- risk_category_actions[
-  match(risk_action_lookup$Category, risk_category_actions$Category),
+section_highlights_report <- section_highlights_report[
   ,
+  c(
+    "Section", "Teacher", "N", "Raw gain", "Expected gain",
+    "Adjusted signal", "Category"
+  ),
   drop = FALSE
 ]
-names(risk_category_actions) <- c(
-  "Category", "Transitions", "Observed risk", "Suggested action"
-)
-
-stakeholder_decisions <- data.frame(
-  Decision = c(
-    "Who should be reviewed first?",
-    "What workload does the starting threshold create?",
-    "What coverage does the starting threshold provide?",
-    "What if review capacity is tighter?",
-    "What should the model not do?"
-  ),
-  Practical_answer = c(
-    "Begin with transitions above the support-review threshold, then use educator context before taking action.",
-    paste0(
-      "A ", threshold_50$Threshold[1], " threshold flags ",
-      threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
-      threshold_50$`Flagged %`[1], ")."
-    ),
-    paste0(
-      "That threshold captures ", threshold_50$Captured[1],
-      " observed support-risk cases, or ", threshold_50$Sens[1],
-      " of the cases in the holdout set."
-    ),
-    paste0(
-      "A ", threshold_65$Threshold[1], " threshold flags ",
-      threshold_65$Flagged[1], " transitions and captures ",
-      threshold_65$Captured[1], " observed support-risk cases."
-    ),
-    "It should not automatically assign intervention, placement, grading, or discipline decisions."
-  ),
-  stringsAsFactors = FALSE
-)
-names(stakeholder_decisions) <- c("Decision", "Practical answer")
 
 report_lines <- c(
-  "# Education Readiness Risk Modeling in R",
+  "# Assessment Growth and Section Performance Analytics in R",
   "",
   "## Recommendation",
   "",
-  "This study uses public-safe education assessment data to answer a practical planning question: which assessment records should be reviewed before the next assessment window when support capacity is limited? In plain English, the model estimates whether the next assessment is likely to show a low score or nonparticipation.",
-  "",
   paste0(
-    "I recommend using the model as a **ranked human review queue**, not as an automatic decision rule. The ",
-    threshold_50$Threshold[1],
-    " support-review threshold is the best default planning option in this analysis. It flags ",
-    threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
-    threshold_50$`Flagged %`[1], ") and captures ",
-    threshold_50$Captured[1],
-    " observed support-risk cases."
+    "This study evaluates **beginning-of-year to end-of-year improvement** in a public-safe education assessment extract. ",
+    "The business question is: which course sections improved more or less than expected after accounting for starting performance, readiness, attendance, course track, grade level, and school-year context?"
   ),
   "",
   paste0(
-    "If the team has less review capacity, the ", threshold_65$Threshold[1],
-    " threshold is the next practical option. It flags ",
-    threshold_65$Flagged[1],
-    " transitions and captures ",
-    threshold_65$Captured[1],
-    " observed support-risk cases. This creates a smaller queue, but it accepts more missed support-risk cases."
+    "Use BOY/EOY gain as the headline metric, but use **adjusted growth signals** for section review. ",
+    "Raw gains are easy to understand, but they can reward sections that started low and penalize sections that started near a ceiling. ",
+    "The adjusted signal compares observed gain with expected gain for a similar starting profile."
   ),
   "",
   paste0(
-    "The main statistical conclusion is that current readiness is the central signal, but the relationship is not purely linear. The selected ",
-    selected_model,
-    " model captures the threshold-like readiness pattern while staying easier to explain than a flexible spline benchmark."
+    "The analysis includes ", included_pairs, " paired BOY/EOY records across ",
+    section_groups, " section-year groups and ", teachers, " simulated teachers. ",
+    "The average BOY score is ", mean_boy, ", the average EOY score is ",
+    mean_eoy, ", and the mean raw gain is ", mean_gain, " points."
+  ),
+  "",
+  paste0(
+    "The selected expected-growth model is **", selected_model,
+    "**. It achieved holdout RMSE **", holdout_rmse,
+    "** and holdout R-squared **", holdout_r2,
+    "**. Section signals should be used for instructional review, curriculum support, and follow-up analysis; they should not be used as automatic teacher evaluation or personnel decisions."
   ),
   "",
   "## Direct Answers",
   "",
-  "1. The purpose of the study is to turn assessment-readiness evidence into a review-prioritization workflow. The output is a ranked queue for human review before the next assessment window.",
-  paste0("2. The modeled outcome is next-window support risk, defined as a next assessment score below 50 or next-window nonparticipation. The holdout event rate is ", holdout_event_rate, "."),
-  paste0("3. The recommended starting threshold is ", threshold_50$Threshold[1], ". It flags ", threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions and captures ", threshold_50$Captured[1], " observed support-risk cases."),
-  paste0("4. The main modeling discovery is that readiness has a threshold-like relationship with future support risk. That is why the final model uses ", selected_model, " rather than a simple linear readiness term."),
-  "5. The conclusion should be used operationally, not mechanically: review the highest-risk records first, confirm context, and avoid automated placement, grading, discipline, or intervention decisions.",
-  "",
-  paste0(
-    "The ranking view is useful even before choosing a hard cutoff. The highest-risk decile has ",
-    top_decile_lift, " lift over the base rate, and the top two deciles capture ",
-    top_two_capture, " of observed support-risk cases."
-  ),
+  "1. The main metric is BOY/EOY score improvement: end-of-year score minus beginning-of-year score for the same simulated student in the same section and teacher context.",
+  paste0("2. The average raw gain is ", mean_gain, " points across ", included_pairs, " paired records."),
+  paste0("3. Raw section gains are reported, but the primary comparison is adjusted growth: observed section gain minus expected gain from the selected model."),
+  paste0("4. The section review layer flags ", above_expected, " section-year groups above expected growth and ", below_expected, " below expected growth, with ", within_expected, " within expected range."),
+  "5. The teacher and course summaries are aggregation views for leadership conversations. They are not personnel ratings because the data is public-safe, simulated, and section composition still matters.",
   "",
   "## Data Audit",
   "",
-  "The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict whether the next assessment window should be reviewed for possible support needs.",
+  "The analysis starts from a public-safe assessment extract. A record enters the growth model only when the same simulated student has valid BOY and EOY scores in the same section and with the same simulated teacher. This keeps the improvement metric tied to a section experience instead of mixing students across sections.",
   "",
-  markdown_table(extract_profile),
+  markdown_table(profile),
   "",
-  "The extract uses simulated identifiers and generalized assessment behavior from a bootstrapped assessment workflow. It should not be treated as a release of real student-level records.",
+  "The extract uses simulated identifiers and generalized score/readiness behavior from a bootstrapped assessment workflow. It is not a release of real student records or real personnel data.",
   "",
-  "## Risk Categories and Suggested Actions",
+  "## Raw Section Improvement",
   "",
-  "Risk categories make the model easier to use in a planning conversation. They are operating labels for a public-safe portfolio analysis, not permanent labels for real students.",
+  "The first layer is descriptive: calculate the BOY/EOY score gain inside each section-year group and run a paired-improvement t-test against zero. This answers whether a section improved, but it does not by itself prove that the section improved more than expected given its starting point.",
   "",
-  markdown_table(risk_category_actions),
+  "The table below shows high-signal section-year groups from the review layer, with their raw BOY/EOY t-test results included for context. The full section t-test table is generated as `reports/section_ttests.csv`.",
   "",
-  "## Operating Summary",
+  markdown_table(raw_improvement_report),
   "",
-  markdown_table(stakeholder_decisions),
+  "![Distribution of BOY/EOY improvement](../figures/growth_distribution.png)",
   "",
-  "The score should be used to decide what gets reviewed first, not what happens automatically. A support team would still confirm context, look at recent trajectory, and decide whether any action is appropriate.",
+  "## Adjusted Growth Model",
   "",
-  "## Technical Validation Summary",
+  "The adjusted model estimates expected BOY/EOY gain from starting score/readiness and context. This is the key step that makes the analysis more useful than a raw gain ranking: it accounts for floor effects, ceiling effects, attendance context, course track, grade level, and school-year timing.",
   "",
-  paste0(
-    "The selected technical model is **", selected_model,
-    "**. On the holdout set, it achieved AUC **", holdout_auc,
-    "**, log loss **", holdout_log_loss, "**, and Brier score **",
-    holdout_brier, "**. Repeated cross-validation produced log loss **",
-    cv_log_loss, "** and AUC **", cv_auc, "**."
-  ),
+  "![Nonparametric and parametric BOY score shape](../figures/baseline_growth_shape.png)",
   "",
-  paste0(
-    "The holdout event rate is ", holdout_event_rate,
-    ", so the evaluation is not based on a rare-event edge case. Bootstrap intervals, calibration diagnostics, lift checks, subgroup calibration, and sensitivity testing are included below."
-  ),
-  "",
-  "## Model Journey",
-  "",
-  "The model search follows a disciplined workflow: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.",
-  "",
-  "![Nonparametric and parametric shape discovery](../figures/shape_discovery.png)",
-  "",
-  markdown_table(family_review),
-  "",
-  "Candidate logistic models were then compared with repeated stratified 5-fold cross-validation on the training split. Log loss is the primary criterion because a support-prioritization workflow needs useful probabilities, not only rank ordering.",
+  markdown_table(shape_review),
   "",
   markdown_table(model_comparison),
   "",
-  "![Candidate model comparison](../figures/model_comparison.png)",
+  "![Expected-growth model comparison](../figures/growth_model_comparison.png)",
   "",
-  "The selection rule favors the simplest non-benchmark model within one standard error of the best repeated-CV log loss. That rule protects the portfolio story from choosing a visually impressive model that does not materially improve validated probability quality.",
+  "## Section Performance Signals",
   "",
-  "## Final Model",
+  "For each section-year group, the adjusted signal is the reliability-weighted average residual: observed gain minus expected gain, weighted toward zero for smaller groups. Positive values mean the section improved more than expected for its starting mix; negative values mean it improved less than expected.",
   "",
-  markdown_table(final_metrics),
+  markdown_table(section_highlights_report),
   "",
-  "Bootstrap intervals give a practical uncertainty band around the holdout metrics.",
+  "![Sections above or below expected growth](../figures/section_adjusted_signals.png)",
   "",
-  markdown_table(metric_uncertainty),
+  "The full section signal table is generated as `reports/section_adjusted_signals.csv` so reviewers can inspect all section-year groups, not only the highlights shown in the report.",
   "",
-  "The adjusted odds ratios below translate the selected GLM into stakeholder-readable effects.",
+  "## Instructor and Course Summary",
   "",
-  markdown_table(odds_ratios),
+  "Teacher and course summaries aggregate the section-level evidence. They are useful for spotting patterns that deserve follow-up, such as a course sequence that may need curriculum review or a teacher group whose sections repeatedly exceed expected growth. They should not be treated as standalone teacher quality scores.",
   "",
-  "## Probability Scale",
+  markdown_table(teacher_summary),
   "",
-  "Risk categories provide a bridge between calibrated probabilities and support workflows.",
+  markdown_table(top_n(course_summary, 12)),
   "",
-  markdown_table(risk_categories),
+  "![Teacher and course growth summaries](../figures/teacher_course_summary.png)",
   "",
-  "A threshold turns probabilities into a work queue. Lower thresholds catch more support-risk cases but create more reviews; higher thresholds focus capacity but miss more students.",
+  "## Diagnostics and Sensitivity",
   "",
-  "![Threshold tradeoffs](../figures/threshold_tradeoff.png)",
+  "The diagnostics below check whether the expected-growth model is centered and whether the raw section rankings materially differ from adjusted rankings.",
   "",
-  markdown_table(thresholds),
-  "",
-  "The table below uses illustrative support-planning economics to show how a threshold can be chosen from capacity and intervention assumptions. These values are scenario assumptions, not claims about a real school system.",
-  "",
-  markdown_table(decision_economics),
-  "",
-  "## Model Checks",
-  "",
-  "ROC checks ranking quality. Calibration checks whether predicted probabilities are on the right scale across ordered risk bands.",
-  "",
-  "![ROC and calibration diagnostics](../figures/roc_calibration.png)",
-  "",
-  markdown_table(calibration),
-  "",
-  markdown_table(calibration_diagnostics),
-  "",
-  "Subgroup calibration checks show where monitoring would matter before operational use. The table reports groups with at least 25 holdout records.",
-  "",
-  markdown_table(subgroup_calibration),
-  "",
-  "A ranked queue is often more useful than a single classification cutoff. The lift chart shows how concentrated support-risk cases are in the highest predicted-risk deciles.",
-  "",
-  "![Lift by predicted risk decile](../figures/lift_chart.png)",
-  "",
-  markdown_table(decile_lift),
-  "",
-  "## Sensitivity Check",
-  "",
-  "The sensitivity analysis lowers the support-risk score cut point from 50 to 45 and refits the selected model family. This tests whether the prioritization story depends on one particular threshold definition.",
-  "",
-  "![Sensitivity analysis](../figures/sensitivity_analysis.png)",
+  markdown_table(diagnostics),
   "",
   markdown_table(sensitivity),
   "",
-  "## Case Studies",
-  "",
-  "Public-safe case studies translate the model into concrete support-planning examples with probability intervals.",
-  "",
-  "![Scenario readiness risk curves](../figures/scenario_readiness_curves.png)",
-  "",
-  markdown_table(scenario_profiles),
+  "![Growth model diagnostics](../figures/growth_diagnostics.png)",
   "",
   "## Bottom Line",
   "",
-  "- Start with the 50% review threshold as a planning default, then adjust for staffing capacity and support cost.",
-  "- Use the ranked queue to prioritize human review and early support planning, not to automate student-level decisions.",
-  "- Keep the piecewise readiness model because it captures the discovered nonlinear risk pattern while staying easier to explain than a flexible spline.",
-  "- Monitor calibration by course track, assessment window, and attendance group before treating risk categories as stable operating labels.",
+  "- BOY/EOY improvement is the right stakeholder metric because it is easy to explain and aligned with instructional growth.",
+  "- Raw improvement should be shown, but adjusted growth should drive section review because starting level, attendance, course track, and ceiling effects matter.",
+  "- The strongest use case is instructional review: identify sections that exceed expected growth, sections that lag expected growth, and course patterns that deserve support.",
+  "- Avoid framing results as teacher quality rankings. The outputs are public-safe analytical signals, not personnel decisions.",
   "",
   "## Reproducibility",
   "",
@@ -351,64 +245,45 @@ report_lines <- c(
   "",
   "## Public-Safety Statement",
   "",
-  "This report is an original public-safe portfolio artifact. It excludes private coursework prompts, exams, rubrics, syllabi, lecture transcripts, source datasets, personal data, patient data, school-private records, credentials, and copyrighted source documents."
+  "This report is an original public-safe portfolio artifact. It excludes private coursework prompts, exams, rubrics, syllabi, lecture transcripts, source datasets, personal data, real student-identifiable records, real personnel records, credentials, and copyrighted source documents."
 )
 
-writeLines(report_lines, file.path("reports", "statistical_risk_modeling_report.md"))
+writeLines(report_lines, file.path("reports", "assessment_growth_section_performance_report.md"))
 
 executive_lines <- c(
-  "# Executive Brief: Support Review Prioritization",
-  "",
-  "**Purpose:** use public-safe assessment-readiness evidence to decide which records should be reviewed before the next assessment window when support capacity is limited.",
+  "# Executive Brief: Assessment Growth and Section Performance",
   "",
   paste0(
-    "**Recommendation:** use the model as a ranked human review queue, not as an automatic decision rule. Start with the ",
-    threshold_50$Threshold[1], " threshold. It flags ",
-    threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
-    threshold_50$`Flagged %`[1], ") and captures ",
-    threshold_50$Captured[1], " observed support-risk cases."
+    "**Purpose:** identify public-safe course sections with unusually high or low BOY/EOY improvement after accounting for starting profile and context."
   ),
   "",
   paste0(
-    "**Capacity option:** if the team needs a smaller review queue, the ",
-    threshold_65$Threshold[1], " threshold flags ",
-    threshold_65$Flagged[1], " transitions and captures ",
-    threshold_65$Captured[1], " observed support-risk cases."
+    "**Headline metric:** average raw BOY/EOY gain is ", mean_gain,
+    " points across ", included_pairs, " paired records."
   ),
   "",
   paste0(
-    "**Main conclusion:** current readiness is the central signal, but the relationship is threshold-like rather than purely linear. The selected ",
-    selected_model, " model keeps that shape explainable."
+    "**Recommendation:** use adjusted growth signals for instructional review. The model flags ",
+    above_expected, " section-year groups above expected growth and ",
+    below_expected, " below expected growth."
   ),
   "",
   paste0(
-    "**Prioritization value:** the highest-risk decile has ", top_decile_lift,
-    " lift over the base rate, and the top two deciles capture ",
-    top_two_capture, " of observed support-risk cases."
+    "**Model support:** selected model is ", selected_model,
+    " with holdout RMSE ", holdout_rmse,
+    " and holdout R-squared ", holdout_r2, "."
   ),
   "",
-  paste0(
-    "**Validation:** holdout AUC ", holdout_auc, ", log loss ",
-    holdout_log_loss, ", and Brier score ", holdout_brier, "."
-  ),
+  "**Decision use:** review section outliers, compare course patterns, and look for instructional practices or curriculum issues that merit follow-up.",
   "",
-  paste0(
-    "**Model discovery:** ", shape_result,
-    " Flexible spline and periodic terms were retained as benchmarks, not as the operating recommendation."
-  ),
-  "",
-  paste0(
-    "**Illustrative planning value:** strongest tested threshold is ",
-    best_economic$Threshold[1], " with net value ", best_economic$Net[1],
-    " under documented support-planning assumptions."
-  ),
+  "**Guardrail:** do not use the section or teacher summaries as automatic teacher evaluation, compensation, discipline, or personnel decisions.",
   "",
   "## Decisions for Stakeholders",
   "",
-  "- Confirm the review capacity that can be handled before the next assessment window.",
-  "- Use risk categories as workflow labels: monitor, watch, review, and priority review.",
-  "- Keep the score as a human review queue, not an automated placement, grading, discipline, or intervention assignment rule.",
-  "- Monitor calibration by course track, assessment window, and attendance group before operational use."
+  "- Decide which section outliers should be reviewed first.",
+  "- Compare raw gains with adjusted gains before drawing conclusions.",
+  "- Use teacher/course summaries as pattern-finding views, not rankings.",
+  "- Monitor missingness and section sizes before operationalizing the workflow."
 )
 
 writeLines(executive_lines, file.path("reports", "executive_brief.md"))
@@ -418,40 +293,43 @@ model_card_lines <- c(
   "",
   "## Intended Use",
   "",
-  "Prioritize public-safe assessment transitions for human support-review planning in a public-safe portfolio project.",
+  "Estimate expected BOY/EOY assessment improvement and identify public-safe section-year groups whose growth is higher or lower than expected for instructional review.",
   "",
   "## Not Intended For",
   "",
-  "Automated academic decisions, real student intervention assignment, grading, discipline, admissions, employment, clinical decisions, or use with private data without separate validation and governance.",
+  "Teacher evaluation, compensation, discipline, student placement, grading, employment, admissions, clinical decisions, or automated decisions with real student or personnel data.",
   "",
   "## Data",
   "",
-  paste0("Public-safe education assessment records with ", format(nrow(readiness), big.mark = ","), " modeled transitions, simulated identifiers, generalized score/readiness behavior, and no real student-identifiable records."),
+  paste0(
+    "Public-safe paired BOY/EOY assessment records with ", included_pairs,
+    " modeled pairs, simulated identifiers, generalized score/readiness behavior, and no real student-identifiable or personnel records."
+  ),
   "",
   "## Model",
   "",
-  paste0("Selected model: ", selected_model, ". Candidate families include context-only, linear readiness, polynomial readiness, piecewise readiness, periodic benchmark, and spline benchmark specifications."),
+  paste0(
+    "Selected expected-growth model: ", selected_model,
+    ". Candidate families include context-only, linear BOY score, quadratic BOY score, piecewise BOY score, readiness-augmented, and spline benchmark specifications."
+  ),
   "",
   "## Performance",
   "",
-  markdown_table(metric_uncertainty),
-  "",
-  "## Calibration",
-  "",
-  markdown_table(calibration_diagnostics),
+  markdown_table(final_metrics),
   "",
   "## Monitoring Recommendations",
   "",
-  "- Track calibration by course track, assessment window, and attendance group.",
-  "- Recheck thresholds when support capacity or readiness definitions change.",
-  "- Refit the model if the assessment sequence, attendance process, or student mix materially changes.",
+  "- Track BOY/EOY pairing rates and missing EOY assessments.",
+  "- Monitor section sizes before ranking or escalating section signals.",
+  "- Refit the model when course mix, assessment design, or attendance patterns change.",
+  "- Compare raw and adjusted growth before communicating section findings.",
   "",
   "## Public-Safety Boundary",
   "",
-  "No private coursework prompts, raw private source datasets, credentials, real student records, patient records, or customer records are included."
+  "No private coursework prompts, raw private source datasets, credentials, real student records, real personnel records, patient records, or customer records are included."
 )
 
 writeLines(model_card_lines, file.path("docs", "model-card.md"))
-message("Wrote reports/statistical_risk_modeling_report.md")
+message("Wrote reports/assessment_growth_section_performance_report.md")
 message("Wrote reports/executive_brief.md")
 message("Wrote docs/model-card.md")

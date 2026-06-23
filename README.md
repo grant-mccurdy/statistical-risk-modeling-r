@@ -1,17 +1,17 @@
-# Statistical Risk Modeling in R
+# Assessment Growth and Section Performance Analytics in R
 
-Public-safe education analytics project in R that turns assessment-readiness
-evidence into a support-review prioritization workflow. The report answers a
-stakeholder question first: when support capacity is limited, which assessment
-transitions should be reviewed before the next assessment window, and what
-tradeoff does each review threshold create?
+Public-safe education analytics project in R that evaluates beginning-of-year
+to end-of-year assessment improvement and identifies section-level growth
+signals. The report answers a stakeholder question first: which course sections
+improved more or less than expected after accounting for starting performance,
+readiness, attendance, course track, grade level, and school-year context?
 
 The extract uses simulated identifiers and generalized readiness behavior from
 a bootstrapped assessment workflow. It is not a release of the original
 assessment artifacts or real student-level records. The project is designed for
 business analytics, BI, education analytics, and data strategy portfolio review:
-the emphasis is decision framing, interpretable statistical modeling,
-validation, calibration, threshold interpretation, and clear communication.
+the emphasis is decision framing, BOY/EOY improvement analysis, adjusted growth
+modeling, section performance signals, validation, and clear communication.
 
 Portfolio page:
 https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html
@@ -20,47 +20,46 @@ https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html
 
 Open the knitted PDF report first:
 
-[reports/statistical_risk_modeling_report.pdf](reports/statistical_risk_modeling_report.pdf)
+[reports/assessment_growth_section_performance_report.pdf](reports/assessment_growth_section_performance_report.pdf)
 
 This is the primary reviewer artifact. It uses a formal statistics-report
-structure: recommendation and direct answers first, data audit next, then model
-discovery, validation metrics, diagnostics, sensitivity analysis, case studies,
+structure: recommendation and direct answers first, data audit next, then raw
+section improvement, adjusted growth modeling, section signals, diagnostics,
 and public-safety notes.
 
-![Nonparametric and parametric shape discovery](figures/shape_discovery.png)
+![Sections above or below expected growth](figures/section_adjusted_signals.png)
 
 ## Stakeholder Preview
 
-- **Purpose:** identify which public-safe assessment transitions should be
-  reviewed first before the next assessment window.
-- **Recommendation:** start with a 50% support-review threshold as a planning
-  default, then adjust based on review capacity and missed-risk tolerance.
-- **Operating impact:** in the holdout set, the 50% threshold flags 326 of 666
-  transitions and captures 298 of 347 observed support-risk cases.
-- **Guardrail:** use the score as a human review queue, not an automated
-  placement, grading, discipline, or intervention assignment rule.
+- **Purpose:** identify public-safe course sections with unusually high or low
+  BOY/EOY improvement.
+- **Headline metric:** average raw BOY/EOY gain is 5.72 points across 1,737
+  paired records.
+- **Analytic layer:** compare observed section gain with expected gain after
+  controlling for starting score/readiness, attendance, course track, grade
+  level, and school-year context.
+- **Guardrail:** use section signals for instructional review and follow-up,
+  not automated teacher evaluation or personnel decisions.
 
 ## Technical Skills Demonstrated
 
 - Public-safe bootstrapped/generalized education extract and reproducible
-  modeling table
-- Logistic regression / GLM probability modeling in R
-- Nonparametric shape exploration before parametric model selection
-- Candidate-family comparison across linear, polynomial, piecewise, periodic,
-  and spline specifications
-- Repeated stratified cross-validation using log loss as the primary criterion
-- Holdout validation with AUC, log loss, and Brier score
-- Bootstrap uncertainty intervals for holdout metrics
-- Coefficient and odds-ratio interpretation
-- ROC, lift, calibration, and subgroup diagnostics
-- Sensitivity analysis for an alternate support-risk threshold
-- Risk-threshold interpretation and illustrative operating tradeoffs
-- Public-safe case studies with confidence intervals for executive communication
+  BOY/EOY growth table
+- Paired section improvement analysis and confidence intervals
+- Adjusted expected-growth modeling in R
+- Candidate-family comparison across context-only, linear, quadratic,
+  piecewise, readiness-augmented, and spline specifications
+- Repeated cross-validation using RMSE and MAE
+- Holdout validation and residual diagnostics
+- Reliability-weighted section performance signals
+- Teacher/course summary views for instructional review
+- Sensitivity checks comparing raw and adjusted section rankings
+- Executive-facing communication with public-safety guardrails
 
 ## Reviewer Path
 
-1. Open `reports/statistical_risk_modeling_report.pdf` for the primary preview
-   report.
+1. Open `reports/assessment_growth_section_performance_report.pdf` for the
+   primary preview report.
 2. Read `reports/executive_brief.md` for the one-page leadership summary.
 3. Review `docs/model-card.md` for intended use, limitations, and monitoring.
 4. Review `docs/data-dictionary.md` for modeling table definitions.
@@ -82,7 +81,7 @@ If `make` is unavailable, run the same steps directly:
 
 ```bash
 Rscript --vanilla R/generate_synthetic_data.R
-Rscript --vanilla R/fit_risk_models.R
+Rscript --vanilla R/fit_growth_models.R
 Rscript --vanilla R/render_markdown_report.R
 Rscript --vanilla R/validate_public_safety.R
 ```
@@ -101,7 +100,7 @@ statistical-risk-modeling-r/
 ├── R/
 │   ├── generate_synthetic_data.R
 │   ├── model_utils.R
-│   ├── fit_risk_models.R
+│   ├── fit_growth_models.R
 │   ├── render_markdown_report.R
 │   ├── run_pipeline.R
 │   └── validate_public_safety.R
@@ -118,9 +117,9 @@ statistical-risk-modeling-r/
 ├── figures/
 ├── reports/
 │   ├── README.md
-│   ├── statistical_risk_modeling_report.Rmd
-│   ├── statistical_risk_modeling_report.md
-│   ├── statistical_risk_modeling_report.pdf
+│   ├── assessment_growth_section_performance_report.Rmd
+│   ├── assessment_growth_section_performance_report.md
+│   ├── assessment_growth_section_performance_report.pdf
 │   └── executive_brief.md
 ├── Makefile
 ├── LICENSE
@@ -132,32 +131,26 @@ statistical-risk-modeling-r/
 The generated evidence packet includes:
 
 - `data/raw/synthetic_education_assessment_long.csv`
-- `data/processed/education_readiness_risk.csv`
-- `reports/statistical_risk_modeling_report.pdf`
-- `reports/statistical_risk_modeling_report.md`
+- `data/processed/education_section_growth.csv`
+- `reports/assessment_growth_section_performance_report.pdf`
+- `reports/assessment_growth_section_performance_report.md`
 - `reports/executive_brief.md`
 - `docs/data-dictionary.md`
 - `docs/model-card.md`
-- `reports/parametric_family_review.csv`
-- `reports/model_comparison.csv`
-- `reports/final_metrics.csv`
-- `reports/metric_uncertainty.csv`
-- `reports/odds_ratios.csv`
-- `reports/calibration_table.csv`
-- `reports/calibration_diagnostics.csv`
-- `reports/threshold_table.csv`
-- `reports/decision_economics.csv`
-- `reports/decile_lift.csv`
-- `reports/subgroup_calibration.csv`
-- `reports/sensitivity_comparison.csv`
-- `reports/scenario_profiles.csv`
-- `figures/shape_discovery.png`
-- `figures/model_comparison.png`
-- `figures/roc_calibration.png`
-- `figures/threshold_tradeoff.png`
-- `figures/lift_chart.png`
-- `figures/sensitivity_analysis.png`
-- `figures/scenario_readiness_curves.png`
+- `reports/growth_model_comparison.csv`
+- `reports/growth_final_metrics.csv`
+- `reports/section_ttests.csv`
+- `reports/section_adjusted_signals.csv`
+- `reports/teacher_growth_summary.csv`
+- `reports/course_growth_summary.csv`
+- `reports/growth_diagnostics.csv`
+- `reports/growth_sensitivity.csv`
+- `figures/growth_distribution.png`
+- `figures/baseline_growth_shape.png`
+- `figures/growth_model_comparison.png`
+- `figures/section_adjusted_signals.png`
+- `figures/teacher_course_summary.png`
+- `figures/growth_diagnostics.png`
 
 ## Validation Commands
 
@@ -179,7 +172,7 @@ make all
 ```
 
 The optional knitted PDF target uses `rmarkdown`, `knitr`, Pandoc, and
-`xelatex`. No API credentials, private files, or network access are required.
+`pdflatex`. No API credentials, private files, or network access are required.
 
 ## Public Safety
 

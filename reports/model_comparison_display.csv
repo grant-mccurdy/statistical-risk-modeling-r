@@ -1,8 +1,0 @@
-"Model","Selected","Role","Parameters","CV_log_loss","CV_log_loss_SD","CV_AUC","Holdout_log_loss","Holdout_AUC","Delta_CV_log_loss"
-"Piecewise readiness","Yes","Selection candidate",15,"0.318","0.001","0.935","0.309","0.938","0.000"
-"Cubic polynomial readiness","","Selection candidate",15,"0.318","0.001","0.935","0.313","0.936","0.000"
-"Spline readiness benchmark","","Benchmark",16,"0.318","0.001","0.935","0.313","0.937","0.000"
-"Quadratic readiness","","Selection candidate",14,"0.319","0.001","0.935","0.316","0.937","0.001"
-"Periodic context benchmark","","Benchmark",16,"0.320","0.001","0.935","0.315","0.937","0.002"
-"Linear readiness","","Selection candidate",13,"0.340","0.001","0.935","0.358","0.933","0.022"
-"Context baseline","","Selection candidate",10,"0.643","0.000","0.674","0.644","0.673","0.325"

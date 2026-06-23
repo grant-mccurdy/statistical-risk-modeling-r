@@ -1,24 +1,20 @@
-# Executive Brief: Support Review Prioritization
+# Executive Brief: Assessment Growth and Section Performance
 
-**Purpose:** use public-safe assessment-readiness evidence to decide which records should be reviewed before the next assessment window when support capacity is limited.
+**Purpose:** identify public-safe course sections with unusually high or low BOY/EOY improvement after accounting for starting profile and context.
 
-**Recommendation:** use the model as a ranked human review queue, not as an automatic decision rule. Start with the 50% threshold. It flags 326 of 666 holdout transitions (48.9%) and captures 298 of 347 observed support-risk cases.
+**Headline metric:** average raw BOY/EOY gain is 5.72 points across 1,737 paired records.
 
-**Capacity option:** if the team needs a smaller review queue, the 65% threshold flags 283 transitions and captures 267 of 347 observed support-risk cases.
+**Recommendation:** use adjusted growth signals for instructional review. The model flags 8 section-year groups above expected growth and 5 below expected growth.
 
-**Main conclusion:** current readiness is the central signal, but the relationship is threshold-like rather than purely linear. The selected Piecewise readiness model keeps that shape explainable.
+**Model support:** selected model is Readiness-augmented with holdout RMSE 4.399 and holdout R-squared 0.181.
 
-**Prioritization value:** the highest-risk decile has 1.92x lift over the base rate, and the top two deciles capture 38.3% of observed support-risk cases.
+**Decision use:** review section outliers, compare course patterns, and look for instructional practices or curriculum issues that merit follow-up.
 
-**Validation:** holdout AUC 0.938, log loss 0.309, and Brier score 0.093.
-
-**Model discovery:** Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks. Flexible spline and periodic terms were retained as benchmarks, not as the operating recommendation.
-
-**Illustrative planning value:** strongest tested threshold is 45% with net value $43,200 under documented support-planning assumptions.
+**Guardrail:** do not use the section or teacher summaries as automatic teacher evaluation, compensation, discipline, or personnel decisions.
 
 ## Decisions for Stakeholders
 
-- Confirm the review capacity that can be handled before the next assessment window.
-- Use risk categories as workflow labels: monitor, watch, review, and priority review.
-- Keep the score as a human review queue, not an automated placement, grading, discipline, or intervention assignment rule.
-- Monitor calibration by course track, assessment window, and attendance group before operational use.
+- Decide which section outliers should be reviewed first.
+- Compare raw gains with adjusted gains before drawing conclusions.
+- Use teacher/course summaries as pattern-finding views, not rankings.
+- Monitor missingness and section sizes before operationalizing the workflow.

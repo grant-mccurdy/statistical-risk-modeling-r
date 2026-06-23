@@ -1,4 +1,0 @@
-"Metric","Estimate","Bootstrap_95_CI"
-"LogLoss","0.309","0.268 to 0.352"
-"Brier","0.093","0.079 to 0.107"
-"AUC","0.938","0.919 to 0.955"

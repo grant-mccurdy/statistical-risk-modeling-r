@@ -1,3 +1,0 @@
-"Diagnostic","Estimate","Interpretation"
-"Calibration intercept","0.165","Near 0 means predicted risk is not systematically high or low"
-"Calibration slope","1.025","Near 1 means predicted probabilities are not overly extreme or compressed"

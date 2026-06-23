@@ -1,8 +1,0 @@
-"Model_family","Why_tested","Decision","CV_log_loss","Holdout_AUC"
-"Context baseline","Tests whether demographic and operating context alone is enough.","Rejected; validation is much weaker without readiness.","0.643","0.673"
-"Linear readiness","Adds the main readiness signal with a simple monotone probability shape.","Rejected; ranking is strong but probability quality is worse.","0.340","0.933"
-"Quadratic readiness","Tests whether risk accelerates near low readiness values.","Rejected; close to selected model, but less directly aligned with the discovered threshold shape.","0.319","0.937"
-"Cubic polynomial readiness","Checks whether a more flexible polynomial improves fit enough to justify instability risk.","Rejected; added polynomial curvature without improving the operating story.","0.318","0.936"
-"Piecewise readiness","Uses the smooth shape discovery to encode separate readiness regions.","Selected as the operating model.","0.318","0.938"
-"Periodic context benchmark","Tests recurring assessment-window structure without making periodicity the headline.","Benchmark only; periodic terms did not justify replacing the operating model.","0.320","0.937"
-"Spline readiness benchmark","Flexible nonlinear benchmark for the readiness curve.","Benchmark only; used to test whether flexible curvature changes the conclusion.","0.318","0.937"
