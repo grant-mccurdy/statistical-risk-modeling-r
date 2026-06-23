@@ -22,10 +22,10 @@ Open the knitted PDF report first:
 
 [reports/statistical_risk_modeling_report.pdf](reports/statistical_risk_modeling_report.pdf)
 
-This is the primary reviewer artifact. It puts the recommendation and direct
-answers first, then moves the technical model discovery, validation metrics,
-diagnostics, sensitivity analysis, scenario profiles, and public-safety notes to
-the back of the report.
+This is the primary reviewer artifact. It uses a formal statistics-report
+structure: recommendation and direct answers first, data audit next, then model
+discovery, validation metrics, diagnostics, sensitivity analysis, case studies,
+and public-safety notes.
 
 ![Nonparametric and parametric shape discovery](figures/shape_discovery.png)
 
@@ -55,7 +55,7 @@ the back of the report.
 - ROC, lift, calibration, and subgroup diagnostics
 - Sensitivity analysis for an alternate support-risk threshold
 - Risk-threshold interpretation and illustrative operating tradeoffs
-- Scenario profiles with confidence intervals for executive communication
+- Public-safe case studies with confidence intervals for executive communication
 
 ## Reviewer Path
 

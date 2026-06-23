@@ -1,14 +1,16 @@
 # Executive Brief: Support Review Prioritization
 
-**Purpose:** identify which public-safe assessment transitions should be reviewed first before the next assessment window when support capacity is limited.
+**Purpose:** use public-safe assessment-readiness evidence to decide which records should be reviewed before the next assessment window when support capacity is limited.
 
-**Recommendation:** start with a 50% support-review threshold. It flags 326 of 666 holdout transitions (48.9%) and captures 298 of 347 observed support-risk cases.
+**Recommendation:** use the model as a ranked human review queue, not as an automatic decision rule. Start with the 50% threshold. It flags 326 of 666 holdout transitions (48.9%) and captures 298 of 347 observed support-risk cases.
 
 **Capacity option:** if the team needs a smaller review queue, the 65% threshold flags 283 transitions and captures 267 of 347 observed support-risk cases.
 
-**Why the model is useful:** current readiness provides meaningful signal, and the highest-risk decile has 1.92x lift over the base rate. The top two deciles capture 38.3% of observed support-risk cases.
+**Main conclusion:** current readiness is the central signal, but the relationship is threshold-like rather than purely linear. The selected Piecewise readiness model keeps that shape explainable.
 
-**Technical support:** the operating model is Piecewise readiness, with holdout AUC 0.938, log loss 0.309, and Brier score 0.093.
+**Prioritization value:** the highest-risk decile has 1.92x lift over the base rate, and the top two deciles capture 38.3% of observed support-risk cases.
+
+**Validation:** holdout AUC 0.938, log loss 0.309, and Brier score 0.093.
 
 **Model discovery:** Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks. Flexible spline and periodic terms were retained as benchmarks, not as the operating recommendation.
 

@@ -14,7 +14,7 @@ report: model
 	$(RSCRIPT) R/render_markdown_report.R
 
 report-pdf: report
-	$(RSCRIPT) -e "rmarkdown::render('reports/statistical_risk_modeling_report.Rmd', output_format='pdf_document', output_file='statistical_risk_modeling_report.pdf', knit_root_dir=getwd(), output_options=list(latex_engine='xelatex'))"
+	$(RSCRIPT) -e "rmarkdown::render('reports/statistical_risk_modeling_report.Rmd', output_format='pdf_document', output_file='statistical_risk_modeling_report.pdf', knit_root_dir=getwd())"
 
 validate:
 	$(RSCRIPT) R/validate_public_safety.R

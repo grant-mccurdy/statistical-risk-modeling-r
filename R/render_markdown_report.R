@@ -121,17 +121,17 @@ best_economic <- decision_economics[
 
 risk_action_lookup <- data.frame(
   Category = c("Monitor", "Watch", "Review", "Priority"),
-  Suggested_use = c(
-    "Routine monitoring; no added review solely from this score.",
-    "Check trend and attendance context before the next assessment.",
-    "Add to the support-team review queue.",
-    "Review first when support capacity is limited."
+  Suggested_action = c(
+    "Routine monitoring",
+    "Check trend and attendance",
+    "Add to review queue",
+    "Review first if capacity is limited"
   ),
   stringsAsFactors = FALSE
 )
 
 risk_category_actions <- merge(
-  risk_categories[, c("Category", "Transitions", "Obs", "Cases")],
+  risk_categories[, c("Category", "Transitions", "Obs")],
   risk_action_lookup,
   by = "Category",
   all.x = TRUE,
@@ -143,7 +143,7 @@ risk_category_actions <- risk_category_actions[
   drop = FALSE
 ]
 names(risk_category_actions) <- c(
-  "Category", "Transitions", "Observed risk", "Observed cases", "Suggested use"
+  "Category", "Transitions", "Observed risk", "Suggested action"
 )
 
 stakeholder_decisions <- data.frame(
@@ -180,18 +180,14 @@ names(stakeholder_decisions) <- c("Decision", "Practical answer")
 report_lines <- c(
   "# Education Readiness Risk Modeling in R",
   "",
-  "## Purpose of the Study",
-  "",
-  "This project asks a practical planning question: when support capacity is limited, which public-safe assessment transitions should be reviewed first before the next assessment window?",
-  "",
-  "The analysis turns current readiness, attendance, assessment-window timing, and course context into a probability of next-window support risk. The goal is not to label a student or automate an academic decision. The goal is to create a transparent review queue that helps a support team focus attention, understand the tradeoffs, and monitor whether the process is working.",
-  "",
   "## Recommendation",
   "",
+  "This study uses public-safe education assessment data to answer a practical planning question: which assessment records should be reviewed before the next assessment window when support capacity is limited? In plain English, the model estimates whether the next assessment is likely to show a low score or nonparticipation.",
+  "",
   paste0(
-    "Use the model as a **human review prioritization tool**. A ",
+    "I recommend using the model as a **ranked human review queue**, not as an automatic decision rule. The ",
     threshold_50$Threshold[1],
-    " support-review threshold is a reasonable starting point for planning because it balances coverage and workload: it flags ",
+    " support-review threshold is the best default planning option in this analysis. It flags ",
     threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
     threshold_50$`Flagged %`[1], ") and captures ",
     threshold_50$Captured[1],
@@ -199,32 +195,41 @@ report_lines <- c(
   ),
   "",
   paste0(
-    "If capacity is tighter, the ", threshold_65$Threshold[1],
-    " threshold is the next practical option: it flags ",
+    "If the team has less review capacity, the ", threshold_65$Threshold[1],
+    " threshold is the next practical option. It flags ",
     threshold_65$Flagged[1],
     " transitions and captures ",
     threshold_65$Captured[1],
-    " observed support-risk cases. The final threshold should be set from available review capacity, intervention cost, and tolerance for missed support needs."
+    " observed support-risk cases. This creates a smaller queue, but it accepts more missed support-risk cases."
   ),
   "",
-  "## What This Means Operationally",
+  paste0(
+    "The main statistical conclusion is that current readiness is the central signal, but the relationship is not purely linear. The selected ",
+    selected_model,
+    " model captures the threshold-like readiness pattern while staying easier to explain than a flexible spline benchmark."
+  ),
   "",
-  markdown_table(stakeholder_decisions),
+  "## Direct Answers",
   "",
-  "The score should be used to decide what gets reviewed first, not what happens automatically. A support team would still confirm context, look at recent trajectory, and decide whether any action is appropriate.",
-  "",
-  "## Key Findings in Plain English",
-  "",
-  "1. Current readiness is the strongest planning signal. Context-only models were much weaker, which means the assessment-readiness evidence adds real prioritization value.",
-  "2. The readiness relationship is not just a straight line. Risk changes sharply across readiness regions, so the final model keeps a threshold-like shape while staying explainable.",
-  "3. A risk threshold is a staffing decision. Lower thresholds review more transitions and miss fewer support-risk cases; higher thresholds focus effort but leave more cases outside the queue.",
-  "4. Risk categories are most useful as workflow labels. They translate probabilities into monitoring, watch-list, review, and priority-review actions.",
+  "1. The purpose of the study is to turn assessment-readiness evidence into a review-prioritization workflow. The output is a ranked queue for human review before the next assessment window.",
+  paste0("2. The modeled outcome is next-window support risk, defined as a next assessment score below 50 or next-window nonparticipation. The holdout event rate is ", holdout_event_rate, "."),
+  paste0("3. The recommended starting threshold is ", threshold_50$Threshold[1], ". It flags ", threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions and captures ", threshold_50$Captured[1], " observed support-risk cases."),
+  paste0("4. The main modeling discovery is that readiness has a threshold-like relationship with future support risk. That is why the final model uses ", selected_model, " rather than a simple linear readiness term."),
+  "5. The conclusion should be used operationally, not mechanically: review the highest-risk records first, confirm context, and avoid automated placement, grading, discipline, or intervention decisions.",
   "",
   paste0(
-    "The ranking view is useful even before choosing a hard cutoff: the highest-risk decile has ",
+    "The ranking view is useful even before choosing a hard cutoff. The highest-risk decile has ",
     top_decile_lift, " lift over the base rate, and the top two deciles capture ",
     top_two_capture, " of observed support-risk cases."
   ),
+  "",
+  "## Data Audit",
+  "",
+  "The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict whether the next assessment window should be reviewed for possible support needs.",
+  "",
+  markdown_table(extract_profile),
+  "",
+  "The extract uses simulated identifiers and generalized assessment behavior from a bootstrapped assessment workflow. It should not be treated as a release of real student-level records.",
   "",
   "## Risk Categories and Suggested Actions",
   "",
@@ -232,13 +237,11 @@ report_lines <- c(
   "",
   markdown_table(risk_category_actions),
   "",
-  "## Data Used",
+  "## Operating Summary",
   "",
-  "The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict support risk at the next assessment.",
+  markdown_table(stakeholder_decisions),
   "",
-  markdown_table(extract_profile),
-  "",
-  "The extract uses simulated identifiers and generalized assessment behavior from a bootstrapped assessment workflow. It should not be treated as a release of real student-level records.",
+  "The score should be used to decide what gets reviewed first, not what happens automatically. A support team would still confirm context, look at recent trajectory, and decide whether any action is appropriate.",
   "",
   "## Technical Validation Summary",
   "",
@@ -255,15 +258,7 @@ report_lines <- c(
     ", so the evaluation is not based on a rare-event edge case. Bootstrap intervals, calibration diagnostics, lift checks, subgroup calibration, and sensitivity testing are included below."
   ),
   "",
-  "## Direct Answers",
-  "",
-  paste0("1. The primary modeled outcome is next-window support risk, defined as a next assessment score below 50 or next-window nonparticipation. The holdout event rate is ", holdout_event_rate, "."),
-  paste0("2. The best operating model is **", selected_model, "**, selected from interpretable GLM candidates after comparing nonlinear and benchmark model families."),
-  paste0("3. The mathematical discovery step matters: ", shape_result),
-  "4. The model is strongest as a prioritization tool. Thresholds convert probabilities into workload, missed-risk, and precision tradeoffs.",
-  "5. The analysis is public-safe: it uses simulated identifiers and generalized assessment behavior, and excludes private prompts, exams, real student-identifiable records, credentials, and private source documents.",
-  "",
-  "## Technical Appendix: Model Journey",
+  "## Model Journey",
   "",
   "The model search follows a disciplined workflow: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.",
   "",
@@ -279,7 +274,7 @@ report_lines <- c(
   "",
   "The selection rule favors the simplest non-benchmark model within one standard error of the best repeated-CV log loss. That rule protects the portfolio story from choosing a visually impressive model that does not materially improve validated probability quality.",
   "",
-  "## Technical Appendix: Final Model",
+  "## Final Model",
   "",
   markdown_table(final_metrics),
   "",
@@ -291,7 +286,7 @@ report_lines <- c(
   "",
   markdown_table(odds_ratios),
   "",
-  "## Technical Appendix: Probability Scale",
+  "## Probability Scale",
   "",
   "Risk categories provide a bridge between calibrated probabilities and support workflows.",
   "",
@@ -307,7 +302,7 @@ report_lines <- c(
   "",
   markdown_table(decision_economics),
   "",
-  "## Technical Appendix: Model Checks",
+  "## Model Checks",
   "",
   "ROC checks ranking quality. Calibration checks whether predicted probabilities are on the right scale across ordered risk bands.",
   "",
@@ -335,9 +330,9 @@ report_lines <- c(
   "",
   markdown_table(sensitivity),
   "",
-  "## Scenario Profiles",
+  "## Case Studies",
   "",
-  "Scenario profiles translate the model into concrete, public-safe support-planning examples with probability intervals.",
+  "Public-safe case studies translate the model into concrete support-planning examples with probability intervals.",
   "",
   "![Scenario readiness risk curves](../figures/scenario_readiness_curves.png)",
   "",
@@ -364,11 +359,11 @@ writeLines(report_lines, file.path("reports", "statistical_risk_modeling_report.
 executive_lines <- c(
   "# Executive Brief: Support Review Prioritization",
   "",
-  "**Purpose:** identify which public-safe assessment transitions should be reviewed first before the next assessment window when support capacity is limited.",
+  "**Purpose:** use public-safe assessment-readiness evidence to decide which records should be reviewed before the next assessment window when support capacity is limited.",
   "",
   paste0(
-    "**Recommendation:** start with a ", threshold_50$Threshold[1],
-    " support-review threshold. It flags ",
+    "**Recommendation:** use the model as a ranked human review queue, not as an automatic decision rule. Start with the ",
+    threshold_50$Threshold[1], " threshold. It flags ",
     threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
     threshold_50$`Flagged %`[1], ") and captures ",
     threshold_50$Captured[1], " observed support-risk cases."
@@ -382,14 +377,18 @@ executive_lines <- c(
   ),
   "",
   paste0(
-    "**Why the model is useful:** current readiness provides meaningful signal, and the highest-risk decile has ",
-    top_decile_lift, " lift over the base rate. The top two deciles capture ",
+    "**Main conclusion:** current readiness is the central signal, but the relationship is threshold-like rather than purely linear. The selected ",
+    selected_model, " model keeps that shape explainable."
+  ),
+  "",
+  paste0(
+    "**Prioritization value:** the highest-risk decile has ", top_decile_lift,
+    " lift over the base rate, and the top two deciles capture ",
     top_two_capture, " of observed support-risk cases."
   ),
   "",
   paste0(
-    "**Technical support:** the operating model is ", selected_model,
-    ", with holdout AUC ", holdout_auc, ", log loss ",
+    "**Validation:** holdout AUC ", holdout_auc, ", log loss ",
     holdout_log_loss, ", and Brier score ", holdout_brier, "."
   ),
   "",
