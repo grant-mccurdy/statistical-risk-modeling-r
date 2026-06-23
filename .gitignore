@@ -7,4 +7,5 @@
 !reports/*.csv
 !reports/*.md
 !reports/*.Rmd
+!reports/statistical_risk_modeling_report.pdf
 reports/model_artifacts.rds

@@ -1,6 +1,10 @@
 ---
 title: "Statistical Risk Modeling in R"
-output: github_document
+output:
+  github_document: default
+  pdf_document:
+    latex_engine: xelatex
+geometry: margin=0.8in
 ---
 
 ```{r build, include=FALSE}

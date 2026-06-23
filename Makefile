@@ -1,4 +1,4 @@
-.PHONY: all data model report validate report-rmd clean
+.PHONY: all data model report report-pdf validate report-rmd clean
 
 RSCRIPT ?= Rscript --vanilla
 
@@ -13,6 +13,9 @@ model: data
 report: model
 	$(RSCRIPT) R/render_markdown_report.R
 
+report-pdf: report
+	$(RSCRIPT) -e "rmarkdown::render('reports/statistical_risk_modeling_report.Rmd', output_format='pdf_document', output_file='statistical_risk_modeling_report.pdf', knit_root_dir=getwd(), output_options=list(latex_engine='xelatex'))"
+
 validate:
 	$(RSCRIPT) R/validate_public_safety.R
 
@@ -22,4 +25,5 @@ report-rmd:
 clean:
 	rm -f data/processed/synthetic_account_risk.csv
 	rm -f reports/*.csv reports/model_artifacts.rds reports/statistical_risk_modeling_report.md
+	rm -f reports/statistical_risk_modeling_report.pdf
 	rm -f figures/*.png

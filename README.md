@@ -11,6 +11,20 @@ business analytics, BI, and data strategy portfolio review: it emphasizes
 method clarity, validation, model diagnostics, and executive-facing
 communication rather than private coursework context.
 
+Portfolio page:
+https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html
+
+## Primary Preview
+
+Open the knitted PDF report first:
+
+[reports/statistical_risk_modeling_report.pdf](reports/statistical_risk_modeling_report.pdf)
+
+This is the primary reviewer artifact. It contains the executive summary,
+model comparison, validation metrics, diagnostics, threshold interpretation,
+sensitivity analysis, scenario profiles, and decision-support implications in a
+single polished report.
+
 ## What This Project Demonstrates
 
 - Synthetic public-safe data generation for a binary risk outcome
@@ -29,13 +43,14 @@ communication rather than private coursework context.
 
 ## Reviewer Path
 
-1. Read `reports/executive_brief.md` for the one-page leadership summary.
-2. Read `reports/statistical_risk_modeling_report.md` for the rendered
-   executive-facing analysis.
-3. Review `docs/model-card.md` for intended use, limitations, and monitoring.
-4. Review `docs/methodology.md` for modeling choices and validation logic.
-5. Inspect `R/` for the reproducible base-R implementation.
-6. Run `make all` to regenerate the synthetic dataset, model artifacts,
+1. Open `reports/statistical_risk_modeling_report.pdf` for the primary preview
+   report.
+2. Read `reports/executive_brief.md` for the one-page leadership summary.
+3. Open the portfolio page for the public project brief and reviewer route.
+4. Review `docs/model-card.md` for intended use, limitations, and monitoring.
+5. Review `docs/methodology.md` for modeling choices and validation logic.
+6. Inspect `R/` for the reproducible base-R implementation.
+7. Run `make all` to regenerate the synthetic dataset, model artifacts,
    report, figures, and public-safety validation.
 
 ## Quick Start
@@ -56,10 +71,12 @@ Rscript --vanilla R/render_markdown_report.R
 Rscript --vanilla R/validate_public_safety.R
 ```
 
-Optional RMarkdown rendering is available when `rmarkdown` is installed:
+Optional RMarkdown/PDF rendering is available when `rmarkdown`, Pandoc, and a
+LaTeX engine such as `xelatex` are installed:
 
 ```bash
 make report-rmd
+make report-pdf
 ```
 
 ## Current Structure
@@ -82,8 +99,11 @@ statistical-risk-modeling-r/
 │   └── public-safety.md
 ├── figures/
 ├── reports/
+│   ├── README.md
 │   ├── statistical_risk_modeling_report.Rmd
-│   └── statistical_risk_modeling_report.md
+│   ├── statistical_risk_modeling_report.md
+│   ├── statistical_risk_modeling_report.pdf
+│   └── executive_brief.md
 ├── Makefile
 ├── LICENSE
 └── README.md
@@ -95,6 +115,7 @@ The generated evidence packet includes:
 
 - `data/processed/synthetic_account_risk.csv`
 - `reports/statistical_risk_modeling_report.md`
+- `reports/statistical_risk_modeling_report.pdf`
 - `reports/executive_brief.md`
 - `docs/model-card.md`
 - `reports/model_comparison.csv`
@@ -123,13 +144,20 @@ make all       # rebuilds data, models, report, figures, and safety checks
 make data      # regenerates the synthetic data
 make model     # runs model comparison and diagnostics
 make report    # renders the Markdown report
+make report-pdf # renders the knitted PDF report
 make validate  # checks for private-source identifiers and raw data leakage
 ```
 
 ## Dependency Notes
 
-This project uses base R only. No package installation, API credentials, private
-files, or network access are required.
+The core pipeline uses base R only:
+
+```bash
+make all
+```
+
+The optional knitted PDF target uses `rmarkdown`, `knitr`, Pandoc, and
+`xelatex`. No API credentials, private files, or network access are required.
 
 ## Public Safety
 
