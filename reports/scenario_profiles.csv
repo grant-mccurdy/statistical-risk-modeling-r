@@ -1,0 +1,4 @@
+"Scenario","Segment","Complexity","Usage","Support_tickets_90d","Response_hours","Prior_incident","Predicted_risk","CI_95","Risk_category"
+"Stable renewal","Mid-Market","Low","82.0%",1,7,0,"2.0%","1.1% to 3.7%","Monitor"
+"Enablement watchlist","SMB","Medium","55.0%",4,16,0,"25.5%","15.5% to 39.0%","Review"
+"Priority intervention","Enterprise","High","35.0%",8,28,1,"73.0%","51.2% to 87.4%","Priority"

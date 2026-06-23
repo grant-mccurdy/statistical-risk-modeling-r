@@ -1,0 +1,7 @@
+"Model","Selected","Role","Parameters","CV_log_loss","CV_log_loss_SD","CV_AUC","Holdout_log_loss","Holdout_AUC","Delta_CV_log_loss"
+"Full operating model","Yes","Selection candidate",15,"0.366","0.005","0.797","0.422","0.719","0.000"
+"Full model with interaction","","Selection candidate",16,"0.367","0.005","0.798","0.422","0.721","0.000"
+"Spline operating benchmark","","Benchmark",21,"0.371","0.005","0.792","0.424","0.717","0.004"
+"Support load","","Selection candidate",9,"0.377","0.003","0.781","0.442","0.674","0.011"
+"Usage behavior","","Selection candidate",10,"0.395","0.005","0.756","0.435","0.686","0.028"
+"Baseline exposure","","Selection candidate",6,"0.447","0.003","0.619","0.456","0.576","0.081"

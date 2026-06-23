@@ -1,0 +1,14 @@
+---
+title: "Statistical Risk Modeling in R"
+output: github_document
+---
+
+```{r build, include=FALSE}
+source(file.path("R", "generate_synthetic_data.R"))
+source(file.path("R", "fit_risk_models.R"))
+```
+
+```{r report, echo=FALSE, results='asis'}
+source(file.path("R", "render_markdown_report.R"))
+cat(readLines(file.path("reports", "statistical_risk_modeling_report.md")), sep = "\n")
+```

@@ -1,0 +1,5 @@
+"Risk_category","Accounts","Share","Mean_predicted","Observed_rate","Observed_events"
+"Monitor",133,"47.5%","5.0%","9.8%",13
+"Watch",70,"25.0%","14.2%","10.0%",7
+"Review",39,"13.9%","26.2%","30.8%",12
+"Priority",38,"13.6%","52.9%","42.1%",16

@@ -1,0 +1,7 @@
+"Measure","Primary","Sensitivity"
+"Holdout log loss","0.422","0.421"
+"Holdout Brier score","0.129","0.129"
+"Holdout AUC","0.719","0.719"
+"Mean absolute probability change","Reference","0.16%"
+"Accounts changing risk category","Reference","2 of 280"
+"Maximum absolute probability change","Reference","1.64%"

@@ -1,0 +1,10 @@
+.RData
+.Rhistory
+.Rproj.user/
+*.html
+*.pdf
+!reports/
+!reports/*.csv
+!reports/*.md
+!reports/*.Rmd
+reports/model_artifacts.rds
