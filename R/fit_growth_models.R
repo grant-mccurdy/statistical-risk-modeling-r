@@ -549,6 +549,32 @@ saveRDS(
   file.path("reports", "model_artifacts.rds")
 )
 
+short_course_label <- function(course) {
+  key <- sub("^MATH-", "", course)
+  labels <- c(
+    "ALG1" = "Alg 1",
+    "ALG2" = "Alg 2",
+    "ALG2-H" = "Alg 2 H",
+    "GEOM" = "Geometry",
+    "PRECALC" = "Precalc",
+    "AP-PRECALC" = "AP Precalc",
+    "AP-CALC-AB" = "AP Calc AB",
+    "AP-CALC-BC" = "AP Calc BC",
+    "BEYOND-CORE" = "Beyond Core"
+  )
+  ifelse(key %in% names(labels), labels[key], gsub("-", " ", key))
+}
+
+short_section_code <- function(section) {
+  section <- sub("^Y[0-9]+-", "", section)
+  section_num <- suppressWarnings(as.integer(sub("^SEC-", "", section)))
+  ifelse(is.na(section_num), section, sprintf("S%02d", section_num))
+}
+
+short_school_year <- function(year) {
+  paste0(substr(year, 3, 4), "-", substr(year, 8, 9))
+}
+
 png(file.path("figures", "growth_distribution.png"), width = 1200, height = 620, res = 150)
 par(mfrow = c(1, 2), mar = c(5, 5, 4, 2))
 hist(
@@ -557,7 +583,7 @@ hist(
   col = "#7BA7C7",
   border = "white",
   xlab = "EOY score minus BOY score",
-  main = "Distribution of BOY/EOY Improvement"
+  main = "BOY/EOY Gain Distribution"
 )
 abline(v = mean(growth$score_gain), col = "#8C2D19", lwd = 2)
 boxplot(
@@ -698,9 +724,14 @@ png(file.path("figures", "section_adjusted_signals.png"), width = 1250, height =
 plot_sections <- section_highlights[
   order(section_highlights$AdjustedGrowthSignal),
 ]
-labels <- paste(plot_sections$Section, plot_sections$Course, sep = " / ")
+labels <- paste(
+  short_school_year(plot_sections$SchoolYear),
+  short_section_code(plot_sections$Section),
+  "/",
+  short_course_label(plot_sections$Course)
+)
 bar_cols <- ifelse(plot_sections$AdjustedGrowthSignal >= 0, "#1B6CA8", "#8C2D19")
-par(mar = c(5, 15, 4, 2))
+par(mar = c(5, 12, 4, 2))
 barplot(
   plot_sections$AdjustedGrowthSignal,
   names.arg = labels,
@@ -731,7 +762,7 @@ course_plot <- head(course_summary[order(abs(course_summary$AdjustedResidual), d
 course_plot <- course_plot[order(course_plot$AdjustedResidual), ]
 barplot(
   course_plot$AdjustedResidual,
-  names.arg = course_plot$Course,
+  names.arg = short_course_label(course_plot$Course),
   las = 2,
   col = ifelse(course_plot$AdjustedResidual >= 0, "#1B6CA8", "#8C2D19"),
   border = NA,

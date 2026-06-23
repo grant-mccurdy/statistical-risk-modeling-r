@@ -8,6 +8,7 @@ output:
   pdf_document:
     toc: false
     latex_engine: pdflatex
+    md_extensions: -implicit_figures
 fontsize: 11pt
 geometry: margin=0.85in
 header-includes:
@@ -28,6 +29,12 @@ if (length(report_lines) > 0 && grepl("^# ", report_lines[1])) {
   if (length(report_lines) > 0 && report_lines[1] == "") {
     report_lines <- report_lines[-1]
   }
+}
+page_break_marker <- "<!-- PDF_PAGE_BREAK -->"
+if (knitr::is_latex_output()) {
+  report_lines <- gsub(page_break_marker, "\\newpage", report_lines, fixed = TRUE)
+} else {
+  report_lines <- gsub(page_break_marker, "", report_lines, fixed = TRUE)
 }
 cat(report_lines, sep = "\n")
 ```

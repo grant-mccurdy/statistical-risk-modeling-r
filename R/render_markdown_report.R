@@ -105,8 +105,31 @@ top_n <- function(df, n = 12) {
 
 short_section_label <- function(section, year) {
   section <- sub("^Y[0-9]+-", "", section)
+  section_num <- suppressWarnings(as.integer(sub("^SEC-", "", section)))
+  section <- ifelse(is.na(section_num), section, sprintf("S%02d", section_num))
   year <- paste0(substr(year, 3, 4), "-", substr(year, 8, 9))
   paste(year, section)
+}
+
+compact_category <- function(category) {
+  out <- ifelse(category == "Within expected range", "In range", category)
+  sub(" expected$", "", out)
+}
+
+pretty_course <- function(course) {
+  key <- sub("^MATH-", "", course)
+  labels <- c(
+    "ALG1" = "Alg 1",
+    "ALG2" = "Alg 2",
+    "ALG2-H" = "Alg 2 H",
+    "GEOM" = "Geometry",
+    "PRECALC" = "Precalc",
+    "AP-PRECALC" = "AP Precalc",
+    "AP-CALC-AB" = "AP Calc AB",
+    "AP-CALC-BC" = "AP Calc BC",
+    "BEYOND-CORE" = "Beyond Core"
+  )
+  ifelse(key %in% names(labels), labels[key], gsub("-", " ", key))
 }
 
 raw_improvement_report <- top_n(section_ttests, 8)
@@ -125,6 +148,7 @@ section_highlights_report$Section <- short_section_label(
   section_highlights_report$Section,
   section_highlights_report$Year
 )
+section_highlights_report$Category <- compact_category(section_highlights_report$Category)
 section_highlights_report <- section_highlights_report[
   ,
   c(
@@ -133,6 +157,30 @@ section_highlights_report <- section_highlights_report[
   ),
   drop = FALSE
 ]
+names(section_highlights_report) <- c(
+  "Section", "Teacher", "N", "Raw", "Expected", "Signal", "Result"
+)
+
+shape_review_report <- shape_review[
+  ,
+  c("Family", "Decision", "CV RMSE", "Holdout RMSE"),
+  drop = FALSE
+]
+
+model_comparison_report <- model_comparison[
+  ,
+  c("Model", "Selected", "CV RMSE", "Holdout RMSE", "Holdout R2"),
+  drop = FALSE
+]
+
+course_summary_report <- top_n(course_summary, 12)
+course_summary_report$Course <- pretty_course(course_summary_report$Course)
+course_summary_report <- course_summary_report[
+  ,
+  c("Course", "Sections", "Records", "Raw gain", "Expected gain", "Adjusted signal"),
+  drop = FALSE
+]
+names(course_summary_report) <- c("Course", "Sections", "Records", "Raw", "Expected", "Signal")
 
 report_lines <- c(
   "# Assessment Growth and Section Performance Analytics in R",
@@ -196,9 +244,15 @@ report_lines <- c(
   "",
   "![Nonparametric and parametric BOY score shape](../figures/baseline_growth_shape.png)",
   "",
-  markdown_table(shape_review),
+  "<!-- PDF_PAGE_BREAK -->",
   "",
-  markdown_table(model_comparison),
+  "**Model family review**",
+  "",
+  markdown_table(shape_review_report),
+  "",
+  markdown_table(model_comparison_report),
+  "",
+  "The full model-comparison table is generated as `reports/growth_model_comparison_display.csv`.",
   "",
   "![Expected-growth model comparison](../figures/growth_model_comparison.png)",
   "",
@@ -218,9 +272,15 @@ report_lines <- c(
   "",
   markdown_table(teacher_summary),
   "",
-  markdown_table(top_n(course_summary, 12)),
+  "<!-- PDF_PAGE_BREAK -->",
+  "",
+  "**Course-level summary**",
+  "",
+  markdown_table(course_summary_report),
   "",
   "![Teacher and course growth summaries](../figures/teacher_course_summary.png)",
+  "",
+  "<!-- PDF_PAGE_BREAK -->",
   "",
   "## Diagnostics and Sensitivity",
   "",
