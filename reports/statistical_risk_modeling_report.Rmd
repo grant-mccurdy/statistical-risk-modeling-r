@@ -1,5 +1,4 @@
 ---
-title: "Education Readiness Risk Modeling in R"
 output:
   github_document: default
   pdf_document:

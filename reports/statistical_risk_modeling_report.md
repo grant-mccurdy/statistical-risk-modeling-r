@@ -1,24 +1,50 @@
 # Education Readiness Risk Modeling in R
 
+## Purpose of the Study
+
+This project asks a practical planning question: when support capacity is limited, which public-safe assessment transitions should be reviewed first before the next assessment window?
+
+The analysis turns current readiness, attendance, assessment-window timing, and course context into a probability of next-window support risk. The goal is not to label a student or automate an academic decision. The goal is to create a transparent review queue that helps a support team focus attention, understand the tradeoffs, and monitor whether the process is working.
+
 ## Recommendation
 
-Use **Piecewise readiness** as an interpretable next-assessment support-risk model for public-safe education planning. The model should rank students for human review and support planning; it should not automate academic decisions.
+Use the model as a **human review prioritization tool**. A 50% support-review threshold is a reasonable starting point for planning because it balances coverage and workload: it flags 326 of 666 holdout transitions (48.9%) and captures 298 of 347 observed support-risk cases.
 
-The selected model achieved holdout AUC **0.938**, log loss **0.309**, and Brier score **0.093**. Repeated cross-validation produced log loss **0.318** and AUC **0.935**.
+If capacity is tighter, the 65% threshold is the next practical option: it flags 283 transitions and captures 267 of 347 observed support-risk cases. The final threshold should be set from available review capacity, intervention cost, and tolerance for missed support needs.
 
-At a 50% support-review threshold, the workflow flags 326 holdout student transitions (48.9%), captures 298 of 347 observed support-risk cases, and produces PPV 91.4%. This is an operating example; capacity and intervention policy should set the final threshold.
+## What This Means Operationally
 
-The ranking view is valuable even without a single cutoff: the highest-risk decile has 1.92x lift over the base rate, and the top two deciles capture 38.3% of observed support-risk cases.
+| Decision | Practical answer |
+| --- | --- |
+| Who should be reviewed first? | Begin with transitions above the support-review threshold, then use educator context before taking action. |
+| What workload does the starting threshold create? | A 50% threshold flags 326 of 666 holdout transitions (48.9%). |
+| What coverage does the starting threshold provide? | That threshold captures 298 of 347 observed support-risk cases, or 85.9% of the cases in the holdout set. |
+| What if review capacity is tighter? | A 65% threshold flags 283 transitions and captures 267 of 347 observed support-risk cases. |
+| What should the model not do? | It should not automatically assign intervention, placement, grading, or discipline decisions. |
 
-## Direct Answers
+The score should be used to decide what gets reviewed first, not what happens automatically. A support team would still confirm context, look at recent trajectory, and decide whether any action is appropriate.
 
-1. The primary modeled outcome is next-window support risk, defined as a next assessment score below 50 or next-window nonparticipation. The holdout event rate is 52.1%.
-2. The best operating model is **Piecewise readiness**, selected from interpretable GLM candidates after comparing nonlinear and benchmark model families.
-3. The mathematical discovery step matters: Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks.
-4. The model is strongest as a prioritization tool. Thresholds convert probabilities into workload, missed-risk, and precision tradeoffs.
-5. The analysis is public-safe: it uses simulated identifiers and generalized assessment behavior, and excludes private prompts, exams, real student-identifiable records, credentials, and private source documents.
+## Key Findings in Plain English
 
-## Data Audit
+1. Current readiness is the strongest planning signal. Context-only models were much weaker, which means the assessment-readiness evidence adds real prioritization value.
+2. The readiness relationship is not just a straight line. Risk changes sharply across readiness regions, so the final model keeps a threshold-like shape while staying explainable.
+3. A risk threshold is a staffing decision. Lower thresholds review more transitions and miss fewer support-risk cases; higher thresholds focus effort but leave more cases outside the queue.
+4. Risk categories are most useful as workflow labels. They translate probabilities into monitoring, watch-list, review, and priority-review actions.
+
+The ranking view is useful even before choosing a hard cutoff: the highest-risk decile has 1.92x lift over the base rate, and the top two deciles capture 38.3% of observed support-risk cases.
+
+## Risk Categories and Suggested Actions
+
+Risk categories make the model easier to use in a planning conversation. They are operating labels for a public-safe portfolio analysis, not permanent labels for real students.
+
+| Category | Transitions | Observed risk | Observed cases | Suggested use |
+| --- | --- | --- | --- | --- |
+| Monitor | 298 | 11.1% | 33 | Routine monitoring; no added review solely from this score. |
+| Watch | 42 | 38.1% | 16 | Check trend and attendance context before the next assessment. |
+| Review | 43 | 72.1% | 31 | Add to the support-team review queue. |
+| Priority | 283 | 94.3% | 267 | Review first when support capacity is limited. |
+
+## Data Used
 
 The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict support risk at the next assessment.
 
@@ -33,9 +59,23 @@ The analysis uses a public-safe assessment extract with one row per assessment w
 | Median current readiness | 47.7 |
 | Included assessment windows | beginning-of-year, end-of-year |
 
-The data is public-safe by design. Student, teacher, section, and course identifiers are simulated labels; score/readiness behavior is generalized from a bootstrapped assessment workflow and should not be treated as a real student-record extract.
+The extract uses simulated identifiers and generalized assessment behavior from a bootstrapped assessment workflow. It should not be treated as a release of real student-level records.
 
-## Model Journey
+## Technical Validation Summary
+
+The selected technical model is **Piecewise readiness**. On the holdout set, it achieved AUC **0.938**, log loss **0.309**, and Brier score **0.093**. Repeated cross-validation produced log loss **0.318** and AUC **0.935**.
+
+The holdout event rate is 52.1%, so the evaluation is not based on a rare-event edge case. Bootstrap intervals, calibration diagnostics, lift checks, subgroup calibration, and sensitivity testing are included below.
+
+## Direct Answers
+
+1. The primary modeled outcome is next-window support risk, defined as a next assessment score below 50 or next-window nonparticipation. The holdout event rate is 52.1%.
+2. The best operating model is **Piecewise readiness**, selected from interpretable GLM candidates after comparing nonlinear and benchmark model families.
+3. The mathematical discovery step matters: Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks.
+4. The model is strongest as a prioritization tool. Thresholds convert probabilities into workload, missed-risk, and precision tradeoffs.
+5. The analysis is public-safe: it uses simulated identifiers and generalized assessment behavior, and excludes private prompts, exams, real student-identifiable records, credentials, and private source documents.
+
+## Technical Appendix: Model Journey
 
 The model search follows a disciplined workflow: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.
 
@@ -67,7 +107,7 @@ Candidate logistic models were then compared with repeated stratified 5-fold cro
 
 The selection rule favors the simplest non-benchmark model within one standard error of the best repeated-CV log loss. That rule protects the portfolio story from choosing a visually impressive model that does not materially improve validated probability quality.
 
-## Final Model
+## Technical Appendix: Final Model
 
 | Metric | Value |
 | --- | --- |
@@ -117,11 +157,11 @@ The adjusted odds ratios below translate the selected GLM into stakeholder-reada
 | Readiness gain above 60 | 5-unit change | 0.86 | 0.75 to 0.98 | 0.023 |
 | School-year sequence | 1-unit / level change | 0.97 | 0.91 to 1.04 | 0.378 |
 
-## Probability Scale
+## Technical Appendix: Probability Scale
 
 Risk categories provide a bridge between calibrated probabilities and support workflows.
 
-| Category | Students | Share | Pred | Obs | Cases |
+| Category | Transitions | Share | Pred | Obs | Cases |
 | --- | --- | --- | --- | --- | --- |
 | Monitor | 298 | 44.7% | 11.0% | 11.1% | 33 |
 | Watch | 42 | 6.3% | 41.1% | 38.1% | 16 |
@@ -152,7 +192,7 @@ The table below uses illustrative support-planning economics to show how a thres
 | 65% | 283 | 267 | $60,075 | $21,225 | $38,850 |
 | 75% | 259 | 250 | $56,250 | $19,425 | $36,825 |
 
-## Model Checks
+## Technical Appendix: Model Checks
 
 ROC checks ranking quality. Calibration checks whether predicted probabilities are on the right scale across ordered risk bands.
 
@@ -235,9 +275,9 @@ Scenario profiles translate the model into concrete, public-safe support-plannin
 
 ## Bottom Line
 
-- Use the model to prioritize human review and early support planning, not to automate student-level decisions.
-- Keep the piecewise readiness shape because it captures the discovered nonlinear risk pattern while staying easier to explain than a flexible spline.
-- Choose operating thresholds from review capacity, support cost, and tolerance for missed support-risk cases.
+- Start with the 50% review threshold as a planning default, then adjust for staffing capacity and support cost.
+- Use the ranked queue to prioritize human review and early support planning, not to automate student-level decisions.
+- Keep the piecewise readiness model because it captures the discovered nonlinear risk pattern while staying easier to explain than a flexible spline.
 - Monitor calibration by course track, assessment window, and attendance group before treating risk categories as stable operating labels.
 
 ## Reproducibility

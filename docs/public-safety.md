@@ -1,7 +1,7 @@
 # Public-Safety Notes
 
 This repository is a public-safe portfolio project. It preserves statistical
-modeling methods and report structure while excluding private source material.
+modeling and communication methods while excluding private source material.
 
 ## Excluded Material
 
@@ -25,10 +25,9 @@ or private assessment artifacts.
 
 The public framing is original: predicting whether a public-safe assessment
 transition should receive human support review at the next assessment window.
-Private statistics coursework was used only to identify transferable methods
-such as model-family comparison, GLM validation, calibration, threshold
-interpretation, diagnostics, sensitivity analysis, and executive-facing
-communication.
+The implementation preserves transferable methods such as model-family
+comparison, GLM validation, calibration, threshold interpretation, diagnostics,
+sensitivity analysis, and executive-facing communication.
 
 ## Validation
 

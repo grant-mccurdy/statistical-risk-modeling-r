@@ -1,20 +1,22 @@
-# Executive Brief: Education Readiness Risk Modeling
+# Executive Brief: Support Review Prioritization
 
-**Recommendation:** use the **Piecewise readiness** to rank public-safe assessment transitions for human support review.
+**Purpose:** identify which public-safe assessment transitions should be reviewed first before the next assessment window when support capacity is limited.
 
-**Validation:** holdout AUC 0.938, log loss 0.309, Brier score 0.093.
+**Recommendation:** start with a 50% support-review threshold. It flags 326 of 666 holdout transitions (48.9%) and captures 298 of 347 observed support-risk cases.
 
-**Model discovery:** Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks.
+**Capacity option:** if the team needs a smaller review queue, the 65% threshold flags 283 transitions and captures 267 of 347 observed support-risk cases.
 
-**Prioritization value:** top decile lift is 1.92x; top two deciles capture 38.3% of observed support-risk cases.
+**Why the model is useful:** current readiness provides meaningful signal, and the highest-risk decile has 1.92x lift over the base rate. The top two deciles capture 38.3% of observed support-risk cases.
 
-**Operating option:** at the 50% threshold, the model flags 326 holdout transitions and captures 298 of 347 support-risk cases.
+**Technical support:** the operating model is Piecewise readiness, with holdout AUC 0.938, log loss 0.309, and Brier score 0.093.
 
-**Illustrative planning value:** strongest tested threshold is 45% with net value $43,200 under documented assumptions.
+**Model discovery:** Nonparametric smoothing supported a threshold-like readiness curve; piecewise and polynomial candidates were tested against spline and periodic benchmarks. Flexible spline and periodic terms were retained as benchmarks, not as the operating recommendation.
 
-## Decision Notes
+**Illustrative planning value:** strongest tested threshold is 45% with net value $43,200 under documented support-planning assumptions.
 
-- Use the model as a review-prioritization layer, not an automated academic decision system.
-- Pick thresholds from support capacity and missed-risk tolerance, not from AUC alone.
-- Monitor calibration by course track, assessment window, and attendance group.
-- Treat flexible spline and periodic terms as benchmark checks; they do not replace the interpretable operating model unless validation materially improves.
+## Decisions for Stakeholders
+
+- Confirm the review capacity that can be handled before the next assessment window.
+- Use risk categories as workflow labels: monitor, watch, review, and priority review.
+- Keep the score as a human review queue, not an automated placement, grading, discipline, or intervention assignment rule.
+- Monitor calibration by course track, assessment window, and attendance group before operational use.

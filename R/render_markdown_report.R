@@ -85,13 +85,14 @@ names(decile_lift) <- c("Decile", "N", "Pred", "Obs", "Cases", "Lift", "Capture"
 names(subgroup_calibration) <- c("Group", "Level", "N", "Pred", "Obs", "Gap", "Cases")
 subgroup_calibration$Group <- clean_label(subgroup_calibration$Group)
 subgroup_calibration$Level <- clean_label(subgroup_calibration$Level)
-names(risk_categories) <- c("Category", "Students", "Share", "Pred", "Obs", "Cases")
+names(risk_categories) <- c("Category", "Transitions", "Share", "Pred", "Obs", "Cases")
 names(sensitivity) <- c("Measure", "Primary", "Sensitivity")
 names(scenario_profiles) <- c("Scenario", "Grade", "Track", "Window", "Attendance", "Readiness", "Risk", "95% CI", "Category")
 scenario_profiles$Window <- clean_label(scenario_profiles$Window)
 scenario_profiles$Attendance <- clean_label(scenario_profiles$Attendance)
 
 selected_model <- metric_value("Selected model")
+holdout_rows <- metric_value("Holdout rows")
 holdout_auc <- metric_value("Holdout AUC")
 holdout_log_loss <- metric_value("Holdout log loss")
 holdout_brier <- metric_value("Holdout Brier score")
@@ -105,6 +106,11 @@ if (nrow(threshold_50) == 0) {
   threshold_50 <- thresholds[which.min(abs(as.numeric(gsub("%", "", thresholds$Threshold)) - 50)), , drop = FALSE]
 }
 
+threshold_65 <- thresholds[thresholds$Threshold == "65%", , drop = FALSE]
+if (nrow(threshold_65) == 0) {
+  threshold_65 <- thresholds[which.min(abs(as.numeric(gsub("%", "", thresholds$Threshold)) - 65)), , drop = FALSE]
+}
+
 top_two_capture <- decile_lift$Capture[decile_lift$Decile == 2][1]
 top_decile_lift <- decile_lift$Lift[decile_lift$Decile == 1][1]
 best_economic <- decision_economics[
@@ -113,36 +119,140 @@ best_economic <- decision_economics[
   drop = FALSE
 ]
 
+risk_action_lookup <- data.frame(
+  Category = c("Monitor", "Watch", "Review", "Priority"),
+  Suggested_use = c(
+    "Routine monitoring; no added review solely from this score.",
+    "Check trend and attendance context before the next assessment.",
+    "Add to the support-team review queue.",
+    "Review first when support capacity is limited."
+  ),
+  stringsAsFactors = FALSE
+)
+
+risk_category_actions <- merge(
+  risk_categories[, c("Category", "Transitions", "Obs", "Cases")],
+  risk_action_lookup,
+  by = "Category",
+  all.x = TRUE,
+  sort = FALSE
+)
+risk_category_actions <- risk_category_actions[
+  match(risk_action_lookup$Category, risk_category_actions$Category),
+  ,
+  drop = FALSE
+]
+names(risk_category_actions) <- c(
+  "Category", "Transitions", "Observed risk", "Observed cases", "Suggested use"
+)
+
+stakeholder_decisions <- data.frame(
+  Decision = c(
+    "Who should be reviewed first?",
+    "What workload does the starting threshold create?",
+    "What coverage does the starting threshold provide?",
+    "What if review capacity is tighter?",
+    "What should the model not do?"
+  ),
+  Practical_answer = c(
+    "Begin with transitions above the support-review threshold, then use educator context before taking action.",
+    paste0(
+      "A ", threshold_50$Threshold[1], " threshold flags ",
+      threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
+      threshold_50$`Flagged %`[1], ")."
+    ),
+    paste0(
+      "That threshold captures ", threshold_50$Captured[1],
+      " observed support-risk cases, or ", threshold_50$Sens[1],
+      " of the cases in the holdout set."
+    ),
+    paste0(
+      "A ", threshold_65$Threshold[1], " threshold flags ",
+      threshold_65$Flagged[1], " transitions and captures ",
+      threshold_65$Captured[1], " observed support-risk cases."
+    ),
+    "It should not automatically assign intervention, placement, grading, or discipline decisions."
+  ),
+  stringsAsFactors = FALSE
+)
+names(stakeholder_decisions) <- c("Decision", "Practical answer")
+
 report_lines <- c(
   "# Education Readiness Risk Modeling in R",
+  "",
+  "## Purpose of the Study",
+  "",
+  "This project asks a practical planning question: when support capacity is limited, which public-safe assessment transitions should be reviewed first before the next assessment window?",
+  "",
+  "The analysis turns current readiness, attendance, assessment-window timing, and course context into a probability of next-window support risk. The goal is not to label a student or automate an academic decision. The goal is to create a transparent review queue that helps a support team focus attention, understand the tradeoffs, and monitor whether the process is working.",
   "",
   "## Recommendation",
   "",
   paste0(
-    "Use **", selected_model,
-    "** as an interpretable next-assessment support-risk model for public-safe education planning. ",
-    "The model should rank students for human review and support planning; it should not automate academic decisions."
+    "Use the model as a **human review prioritization tool**. A ",
+    threshold_50$Threshold[1],
+    " support-review threshold is a reasonable starting point for planning because it balances coverage and workload: it flags ",
+    threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
+    threshold_50$`Flagged %`[1], ") and captures ",
+    threshold_50$Captured[1],
+    " observed support-risk cases."
   ),
   "",
   paste0(
-    "The selected model achieved holdout AUC **", holdout_auc,
+    "If capacity is tighter, the ", threshold_65$Threshold[1],
+    " threshold is the next practical option: it flags ",
+    threshold_65$Flagged[1],
+    " transitions and captures ",
+    threshold_65$Captured[1],
+    " observed support-risk cases. The final threshold should be set from available review capacity, intervention cost, and tolerance for missed support needs."
+  ),
+  "",
+  "## What This Means Operationally",
+  "",
+  markdown_table(stakeholder_decisions),
+  "",
+  "The score should be used to decide what gets reviewed first, not what happens automatically. A support team would still confirm context, look at recent trajectory, and decide whether any action is appropriate.",
+  "",
+  "## Key Findings in Plain English",
+  "",
+  "1. Current readiness is the strongest planning signal. Context-only models were much weaker, which means the assessment-readiness evidence adds real prioritization value.",
+  "2. The readiness relationship is not just a straight line. Risk changes sharply across readiness regions, so the final model keeps a threshold-like shape while staying explainable.",
+  "3. A risk threshold is a staffing decision. Lower thresholds review more transitions and miss fewer support-risk cases; higher thresholds focus effort but leave more cases outside the queue.",
+  "4. Risk categories are most useful as workflow labels. They translate probabilities into monitoring, watch-list, review, and priority-review actions.",
+  "",
+  paste0(
+    "The ranking view is useful even before choosing a hard cutoff: the highest-risk decile has ",
+    top_decile_lift, " lift over the base rate, and the top two deciles capture ",
+    top_two_capture, " of observed support-risk cases."
+  ),
+  "",
+  "## Risk Categories and Suggested Actions",
+  "",
+  "Risk categories make the model easier to use in a planning conversation. They are operating labels for a public-safe portfolio analysis, not permanent labels for real students.",
+  "",
+  markdown_table(risk_category_actions),
+  "",
+  "## Data Used",
+  "",
+  "The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict support risk at the next assessment.",
+  "",
+  markdown_table(extract_profile),
+  "",
+  "The extract uses simulated identifiers and generalized assessment behavior from a bootstrapped assessment workflow. It should not be treated as a release of real student-level records.",
+  "",
+  "## Technical Validation Summary",
+  "",
+  paste0(
+    "The selected technical model is **", selected_model,
+    "**. On the holdout set, it achieved AUC **", holdout_auc,
     "**, log loss **", holdout_log_loss, "**, and Brier score **",
     holdout_brier, "**. Repeated cross-validation produced log loss **",
     cv_log_loss, "** and AUC **", cv_auc, "**."
   ),
   "",
   paste0(
-    "At a ", threshold_50$Threshold[1], " support-review threshold, the workflow flags ",
-    threshold_50$Flagged[1], " holdout student transitions (",
-    threshold_50$`Flagged %`[1], "), captures ",
-    threshold_50$Captured[1], " observed support-risk cases, and produces PPV ",
-    threshold_50$PPV[1], ". This is an operating example; capacity and intervention policy should set the final threshold."
-  ),
-  "",
-  paste0(
-    "The ranking view is valuable even without a single cutoff: the highest-risk decile has ",
-    top_decile_lift, " lift over the base rate, and the top two deciles capture ",
-    top_two_capture, " of observed support-risk cases."
+    "The holdout event rate is ", holdout_event_rate,
+    ", so the evaluation is not based on a rare-event edge case. Bootstrap intervals, calibration diagnostics, lift checks, subgroup calibration, and sensitivity testing are included below."
   ),
   "",
   "## Direct Answers",
@@ -153,15 +263,7 @@ report_lines <- c(
   "4. The model is strongest as a prioritization tool. Thresholds convert probabilities into workload, missed-risk, and precision tradeoffs.",
   "5. The analysis is public-safe: it uses simulated identifiers and generalized assessment behavior, and excludes private prompts, exams, real student-identifiable records, credentials, and private source documents.",
   "",
-  "## Data Audit",
-  "",
-  "The analysis uses a public-safe assessment extract with one row per assessment window. The modeling table turns consecutive assessment windows into prediction records: current assessment information is used to predict support risk at the next assessment.",
-  "",
-  markdown_table(extract_profile),
-  "",
-  "The data is public-safe by design. Student, teacher, section, and course identifiers are simulated labels; score/readiness behavior is generalized from a bootstrapped assessment workflow and should not be treated as a real student-record extract.",
-  "",
-  "## Model Journey",
+  "## Technical Appendix: Model Journey",
   "",
   "The model search follows a disciplined workflow: inspect the shape first, test candidate parametric families second, and keep the final model interpretable unless a flexible benchmark clearly earns its complexity.",
   "",
@@ -177,7 +279,7 @@ report_lines <- c(
   "",
   "The selection rule favors the simplest non-benchmark model within one standard error of the best repeated-CV log loss. That rule protects the portfolio story from choosing a visually impressive model that does not materially improve validated probability quality.",
   "",
-  "## Final Model",
+  "## Technical Appendix: Final Model",
   "",
   markdown_table(final_metrics),
   "",
@@ -189,7 +291,7 @@ report_lines <- c(
   "",
   markdown_table(odds_ratios),
   "",
-  "## Probability Scale",
+  "## Technical Appendix: Probability Scale",
   "",
   "Risk categories provide a bridge between calibrated probabilities and support workflows.",
   "",
@@ -205,7 +307,7 @@ report_lines <- c(
   "",
   markdown_table(decision_economics),
   "",
-  "## Model Checks",
+  "## Technical Appendix: Model Checks",
   "",
   "ROC checks ranking quality. Calibration checks whether predicted probabilities are on the right scale across ordered risk bands.",
   "",
@@ -243,9 +345,9 @@ report_lines <- c(
   "",
   "## Bottom Line",
   "",
-  "- Use the model to prioritize human review and early support planning, not to automate student-level decisions.",
-  "- Keep the piecewise readiness shape because it captures the discovered nonlinear risk pattern while staying easier to explain than a flexible spline.",
-  "- Choose operating thresholds from review capacity, support cost, and tolerance for missed support-risk cases.",
+  "- Start with the 50% review threshold as a planning default, then adjust for staffing capacity and support cost.",
+  "- Use the ranked queue to prioritize human review and early support planning, not to automate student-level decisions.",
+  "- Keep the piecewise readiness model because it captures the discovered nonlinear risk pattern while staying easier to explain than a flexible spline.",
   "- Monitor calibration by course track, assessment window, and attendance group before treating risk categories as stable operating labels.",
   "",
   "## Reproducibility",
@@ -260,26 +362,54 @@ report_lines <- c(
 writeLines(report_lines, file.path("reports", "statistical_risk_modeling_report.md"))
 
 executive_lines <- c(
-  "# Executive Brief: Education Readiness Risk Modeling",
+  "# Executive Brief: Support Review Prioritization",
   "",
-  paste0("**Recommendation:** use the **", selected_model, "** to rank public-safe assessment transitions for human support review."),
+  "**Purpose:** identify which public-safe assessment transitions should be reviewed first before the next assessment window when support capacity is limited.",
   "",
-  paste0("**Validation:** holdout AUC ", holdout_auc, ", log loss ", holdout_log_loss, ", Brier score ", holdout_brier, "."),
+  paste0(
+    "**Recommendation:** start with a ", threshold_50$Threshold[1],
+    " support-review threshold. It flags ",
+    threshold_50$Flagged[1], " of ", holdout_rows, " holdout transitions (",
+    threshold_50$`Flagged %`[1], ") and captures ",
+    threshold_50$Captured[1], " observed support-risk cases."
+  ),
   "",
-  paste0("**Model discovery:** ", shape_result),
+  paste0(
+    "**Capacity option:** if the team needs a smaller review queue, the ",
+    threshold_65$Threshold[1], " threshold flags ",
+    threshold_65$Flagged[1], " transitions and captures ",
+    threshold_65$Captured[1], " observed support-risk cases."
+  ),
   "",
-  paste0("**Prioritization value:** top decile lift is ", top_decile_lift, "; top two deciles capture ", top_two_capture, " of observed support-risk cases."),
+  paste0(
+    "**Why the model is useful:** current readiness provides meaningful signal, and the highest-risk decile has ",
+    top_decile_lift, " lift over the base rate. The top two deciles capture ",
+    top_two_capture, " of observed support-risk cases."
+  ),
   "",
-  paste0("**Operating option:** at the ", threshold_50$Threshold[1], " threshold, the model flags ", threshold_50$Flagged[1], " holdout transitions and captures ", threshold_50$Captured[1], " support-risk cases."),
+  paste0(
+    "**Technical support:** the operating model is ", selected_model,
+    ", with holdout AUC ", holdout_auc, ", log loss ",
+    holdout_log_loss, ", and Brier score ", holdout_brier, "."
+  ),
   "",
-  paste0("**Illustrative planning value:** strongest tested threshold is ", best_economic$Threshold[1], " with net value ", best_economic$Net[1], " under documented assumptions."),
+  paste0(
+    "**Model discovery:** ", shape_result,
+    " Flexible spline and periodic terms were retained as benchmarks, not as the operating recommendation."
+  ),
   "",
-  "## Decision Notes",
+  paste0(
+    "**Illustrative planning value:** strongest tested threshold is ",
+    best_economic$Threshold[1], " with net value ", best_economic$Net[1],
+    " under documented support-planning assumptions."
+  ),
   "",
-  "- Use the model as a review-prioritization layer, not an automated academic decision system.",
-  "- Pick thresholds from support capacity and missed-risk tolerance, not from AUC alone.",
-  "- Monitor calibration by course track, assessment window, and attendance group.",
-  "- Treat flexible spline and periodic terms as benchmark checks; they do not replace the interpretable operating model unless validation materially improves."
+  "## Decisions for Stakeholders",
+  "",
+  "- Confirm the review capacity that can be handled before the next assessment window.",
+  "- Use risk categories as workflow labels: monitor, watch, review, and priority review.",
+  "- Keep the score as a human review queue, not an automated placement, grading, discipline, or intervention assignment rule.",
+  "- Monitor calibration by course track, assessment window, and attendance group before operational use."
 )
 
 writeLines(executive_lines, file.path("reports", "executive_brief.md"))

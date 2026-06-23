@@ -1,17 +1,17 @@
 # Statistical Risk Modeling in R
 
-Public-safe education analytics project in R: built an interpretable
-probability model, compared candidate parametric model families, validated
-performance, translated predictions into support-risk categories, and documented
-decision-support implications for an executive audience.
+Public-safe education analytics project in R that turns assessment-readiness
+evidence into a support-review prioritization workflow. The report answers a
+stakeholder question first: when support capacity is limited, which assessment
+transitions should be reviewed before the next assessment window, and what
+tradeoff does each review threshold create?
 
-The project models whether a public-safe assessment transition is likely to
-require support review at the next assessment window. The extract uses synthetic
-identifiers and generalized assessment behavior from a bootstrapped/simulated
-education data pipeline; it is not a real student-record release. The project is
-designed for business analytics, BI, education analytics, and data strategy
-portfolio review: the emphasis is statistical model discovery, validation,
-calibration, threshold interpretation, and clear communication.
+The extract uses simulated identifiers and generalized readiness behavior from
+a bootstrapped assessment workflow. It is not a release of the original
+assessment artifacts or real student-level records. The project is designed for
+business analytics, BI, education analytics, and data strategy portfolio review:
+the emphasis is decision framing, interpretable statistical modeling,
+validation, calibration, threshold interpretation, and clear communication.
 
 Portfolio page:
 https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html
@@ -23,15 +23,26 @@ Open the knitted PDF report first:
 [reports/statistical_risk_modeling_report.pdf](reports/statistical_risk_modeling_report.pdf)
 
 This is the primary reviewer artifact. It puts the recommendation and direct
-answers first, then moves into model discovery, validation metrics,
-diagnostics, threshold interpretation, sensitivity analysis, scenario profiles,
-and public-safety notes.
+answers first, then moves the technical model discovery, validation metrics,
+diagnostics, sensitivity analysis, scenario profiles, and public-safety notes to
+the back of the report.
 
 ![Nonparametric and parametric shape discovery](figures/shape_discovery.png)
 
-## What This Project Demonstrates
+## Stakeholder Preview
 
-- Public-safe bootstrapped/simulated education extract and reproducible
+- **Purpose:** identify which public-safe assessment transitions should be
+  reviewed first before the next assessment window.
+- **Recommendation:** start with a 50% support-review threshold as a planning
+  default, then adjust based on review capacity and missed-risk tolerance.
+- **Operating impact:** in the holdout set, the 50% threshold flags 326 of 666
+  transitions and captures 298 of 347 observed support-risk cases.
+- **Guardrail:** use the score as a human review queue, not an automated
+  placement, grading, discipline, or intervention assignment rule.
+
+## Technical Skills Demonstrated
+
+- Public-safe bootstrapped/generalized education extract and reproducible
   modeling table
 - Logistic regression / GLM probability modeling in R
 - Nonparametric shape exploration before parametric model selection
