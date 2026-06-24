@@ -2,7 +2,7 @@
 
 ## Intended Use
 
-Estimate expected BOY/EOY assessment improvement and identify public-safe section-year groups whose growth is higher or lower than expected for instructional review.
+Estimate an expected BOY/EOY assessment-growth baseline and identify public-safe teacher/course patterns that deserve future instructional review.
 
 ## Not Intended For
 
@@ -14,24 +14,32 @@ Public-safe paired BOY/EOY assessment records with 1,737 modeled pairs, simulate
 
 ## Model
 
-Selected expected-growth model: Readiness-augmented. Candidate families include context-only, linear BOY score, quadratic BOY score, piecewise BOY score, readiness-augmented, and spline benchmark specifications.
+Selected baseline: EOY readiness model. Candidate families include direct gain models, predicted EOY models, interaction surfaces, GAM smooths, random forests, gradient boosting, and an excluded teacher/course ID leakage check.
 
 ## Performance
 
 | Metric | Value |
 | --- | --- |
-| Selected model | Readiness-augmented |
-| Selection rule | Simplest non-benchmark model within one standard error of best repeated-CV RMSE |
+| Selected model | EOY readiness model |
+| Selected target strategy | Predicted EOY |
+| Selected method | Linear model |
+| Selection rule | Lowest repeated-CV expected-gain RMSE among operational candidates; teacher/course ID leakage benchmark excluded |
 | Training paired records | 1,389 |
 | Holdout paired records | 348 |
+| Candidate models tested | 13 |
+| Operational candidates tested | 12 |
+| Excluded leakage benchmarks | 1 |
 | Repeated CV folds | 5 |
-| Repeated CV repeats | 6 |
-| CV RMSE | 4.700 |
-| CV MAE | 3.773 |
-| CV R-squared | 0.159 |
-| Holdout RMSE | 4.399 |
-| Holdout MAE | 3.512 |
-| Holdout R-squared | 0.181 |
+| Repeated CV repeats | 3 |
+| CV expected-gain RMSE | 4.705 |
+| CV expected-gain MAE | 3.774 |
+| CV expected-gain R-squared | 0.158 |
+| CV EOY R-squared | 0.937 |
+| Holdout expected-gain RMSE | 4.400 |
+| Holdout expected-gain MAE | 3.514 |
+| Holdout expected-gain R-squared | 0.180 |
+| Holdout EOY RMSE | 4.400 |
+| Holdout EOY R-squared | 0.947 |
 | Mean BOY score | 48.5 |
 | Mean EOY score | 54.2 |
 | Mean raw BOY/EOY gain | 5.72 |
@@ -40,9 +48,10 @@ Selected expected-growth model: Readiness-augmented. Candidate families include 
 ## Monitoring Recommendations
 
 - Track BOY/EOY pairing rates and missing EOY assessments.
-- Monitor section sizes before ranking or escalating section signals.
+- Monitor section sizes before ranking or escalating signals.
 - Refit the model when course mix, assessment design, or attendance patterns change.
-- Compare raw and adjusted growth before communicating section findings.
+- Keep teacher, course, and section IDs out of the operating baseline when the goal is to surface those patterns for review.
+- Compare raw and adjusted growth before communicating findings.
 
 ## Public-Safety Boundary
 

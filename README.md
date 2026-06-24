@@ -1,17 +1,19 @@
 # Assessment Growth and Section Performance Analytics in R
 
 Public-safe education analytics project in R that evaluates beginning-of-year
-to end-of-year assessment improvement and identifies section-level growth
-signals. The report answers a stakeholder question first: which course sections
-improved more or less than expected after accounting for starting performance,
-readiness, attendance, course track, grade level, and school-year context?
+to end-of-year assessment improvement and converts seven years of historical
+section evidence into future-facing teacher and course review priorities. The
+report answers a stakeholder question first: which teachers and courses should
+receive closer review before the next assessment cycle after accounting for
+starting performance, readiness, attendance, course track, grade level, and
+school-year context?
 
 The extract uses simulated identifiers and generalized readiness behavior from
 a bootstrapped assessment workflow. It is not a release of the original
 assessment artifacts or real student-level records. The project is designed for
 business analytics, BI, education analytics, and data strategy portfolio review:
 the emphasis is decision framing, BOY/EOY improvement analysis, adjusted growth
-modeling, section performance signals, validation, and clear communication.
+modeling, future review signals, validation, and clear communication.
 
 Portfolio page:
 https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html
@@ -24,22 +26,22 @@ Open the knitted PDF report first:
 
 This is the primary reviewer artifact. It uses a formal statistics-report
 structure: recommendation and direct answers first, data audit next, then raw
-section improvement, adjusted growth modeling, section signals, diagnostics,
-and public-safety notes.
+section evidence, expected-growth modeling, teacher/course review signals,
+diagnostics, and public-safety notes.
 
 ![Sections above or below expected growth](figures/section_adjusted_signals.png)
 
 ## Stakeholder Preview
 
-- **Purpose:** identify public-safe course sections with unusually high or low
-  BOY/EOY improvement.
+- **Purpose:** identify public-safe teacher and course patterns that deserve
+  future review based on historical BOY/EOY improvement.
 - **Headline metric:** average raw BOY/EOY gain is 5.72 points across 1,737
   paired records.
-- **Analytic layer:** compare observed section gain with expected gain after
-  controlling for starting score/readiness, attendance, course track, grade
-  level, and school-year context.
-- **Guardrail:** use section signals for instructional review and follow-up,
-  not automated teacher evaluation or personnel decisions.
+- **Analytic layer:** compare observed gain with expected gain after controlling
+  for starting score/readiness, attendance, course track, grade level, and
+  school-year context.
+- **Guardrail:** use teacher/course signals for instructional review and
+  follow-up, not automated teacher evaluation or personnel decisions.
 
 ## Technical Skills Demonstrated
 
@@ -47,12 +49,12 @@ and public-safety notes.
   BOY/EOY growth table
 - Paired section improvement analysis and confidence intervals
 - Adjusted expected-growth modeling in R
-- Candidate-family comparison across context-only, linear, quadratic,
-  piecewise, readiness-augmented, and spline specifications
+- Candidate-family comparison across direct-gain, predicted-EOY, interaction,
+  GAM, random-forest, gradient-boosting, and leakage-check specifications
 - Repeated cross-validation using RMSE and MAE
 - Holdout validation and residual diagnostics
-- Reliability-weighted section performance signals
-- Teacher/course summary views for instructional review
+- Reliability-weighted historical section signals
+- Teacher/course review-priority views for instructional planning
 - Sensitivity checks comparing raw and adjusted section rankings
 - Executive-facing communication with public-safety guardrails
 
@@ -64,13 +66,15 @@ and public-safety notes.
 3. Review `docs/model-card.md` for intended use, limitations, and monitoring.
 4. Review `docs/data-dictionary.md` for modeling table definitions.
 5. Review `docs/methodology.md` for modeling choices and validation logic.
-6. Inspect `R/` for the reproducible base-R implementation.
+6. Inspect `R/` for the reproducible R implementation.
 7. Run `make all` to regenerate the public-safe extract, model artifacts,
    report, figures, and public-safety validation.
 
 ## Quick Start
 
-The core build uses base R and `make`.
+The core build uses R and `make`. If `mgcv`, `randomForest`, or `gbm` are
+installed, the model search includes GAM, random-forest, and gradient-boosting
+candidates; otherwise those optional families are skipped and documented.
 
 ```bash
 cd /home/grant/repos/public/statistical-risk-modeling-r
@@ -138,7 +142,11 @@ The generated evidence packet includes:
 - `docs/data-dictionary.md`
 - `docs/model-card.md`
 - `reports/growth_model_comparison.csv`
+- `reports/growth_model_comparison_display.csv`
 - `reports/growth_final_metrics.csv`
+- `reports/future_review_priorities.csv`
+- `reports/historical_section_evidence.csv`
+- `reports/model_dependency_status.csv`
 - `reports/section_ttests.csv`
 - `reports/section_adjusted_signals.csv`
 - `reports/teacher_growth_summary.csv`
@@ -165,14 +173,20 @@ make validate   # checks public-safety rules
 
 ## Dependency Notes
 
-The core pipeline uses base R only:
+Install the optional modeling/reporting packages for the full portfolio build:
+
+```r
+install.packages(c("mgcv", "randomForest", "gbm", "rmarkdown", "knitr"))
+```
+
+Then run:
 
 ```bash
 make all
 ```
 
-The optional knitted PDF target uses `rmarkdown`, `knitr`, Pandoc, and
-`pdflatex`. No API credentials, private files, or network access are required.
+The knitted PDF target uses `rmarkdown`, `knitr`, Pandoc, and `pdflatex`. No
+API credentials, private files, or network access are required.
 
 ## Public Safety
 

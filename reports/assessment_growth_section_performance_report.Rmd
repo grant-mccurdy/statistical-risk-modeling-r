@@ -19,8 +19,8 @@ header-includes:
 ---
 
 ```{r build, include=FALSE, message=FALSE, warning=FALSE}
-source(file.path("R", "generate_synthetic_data.R"))
-source(file.path("R", "fit_growth_models.R"))
+source(file.path("R", "model_utils.R"))
+ensure_project_dirs()
 ```
 
 ```{r report, echo=FALSE, results='asis', message=FALSE, warning=FALSE}

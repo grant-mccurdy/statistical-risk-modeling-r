@@ -16,7 +16,14 @@ Other useful report files:
 - `growth_extract_profile.csv`: BOY/EOY paired extract summary.
 - `growth_model_comparison.csv`: repeated-CV and holdout expected-growth model
   comparison.
+- `growth_model_comparison_display.csv`: reviewer-facing model-comparison
+  table.
 - `growth_final_metrics.csv`: selected model and validation summary.
+- `future_review_priorities.csv`: future-facing teacher/course review
+  priorities.
+- `historical_section_evidence.csv`: historical section evidence supporting
+  the future review priorities.
+- `model_dependency_status.csv`: optional modeling packages used or skipped.
 - `section_ttests.csv`: raw section-year BOY/EOY improvement tests.
 - `section_adjusted_signals.csv`: adjusted section-year growth signals.
 - `teacher_growth_summary.csv`: simulated teacher-level summary view.
