@@ -10,6 +10,16 @@ The analysis includes 1,737 paired BOY/EOY records across 174 section-year group
 
 The selected expected-growth model is **Readiness-augmented**. It achieved holdout RMSE **4.399** and holdout R-squared **0.181**. Section signals should be used for instructional review, curriculum support, and follow-up analysis; they should not be used as automatic teacher evaluation or personnel decisions.
 
+## Approach and Rationale
+
+This study evaluates performance using **BOY/EOY score gain**: how much students improved from beginning of year to end of year. A raw gain ranking is easy to understand, but it can be misleading because sections with different starting levels, attendance patterns, and course contexts have different growth opportunities.
+
+To create a fairer comparison, the model estimates each student's **expected BOY/EOY gain** from starting score, readiness, attendance, grade level, course context, and school-year timing. The adjusted gain signal is actual gain minus expected gain.
+
+In plain terms, the report asks: did this section improve more or less than we would expect for students with similar starting profiles?
+
+<!-- PDF_PAGE_BREAK -->
+
 ## Direct Answers
 
 1. The main metric is BOY/EOY score improvement: end-of-year score minus beginning-of-year score for the same simulated student in the same section and teacher context.
@@ -17,8 +27,6 @@ The selected expected-growth model is **Readiness-augmented**. It achieved holdo
 3. Raw section gains are reported, but the primary comparison is adjusted growth: observed section gain minus expected gain from the selected model.
 4. The section review layer flags 8 section-year groups above expected growth and 5 below expected growth, with 156 within expected range. Start with the audit queue below rather than a raw ranking.
 5. Course and teacher summaries are pattern-finding views. Alg 1 is the clearest course support review; Precalc is the clearest course bright spot; TCH-001 merits a composition-aware support review.
-
-<!-- PDF_PAGE_BREAK -->
 
 **Initial audit queue**
 
@@ -32,6 +40,8 @@ The selected expected-growth model is **Readiness-augmented**. It achieved holdo
 | Course support | Alg 1 | Course signal -0.34; raw 6.60 vs expected 6.94. |
 | Course bright spot | Precalc | Course signal +0.10; raw 5.73 vs expected 5.63. |
 | Teacher support | TCH-001 | Average signal -0.17 across 23 sections; review with composition context. |
+
+<!-- PDF_PAGE_BREAK -->
 
 ## Data Audit
 
