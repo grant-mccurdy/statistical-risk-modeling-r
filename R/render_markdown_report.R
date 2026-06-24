@@ -8,8 +8,13 @@ required_tables <- c(
   file.path("reports", "growth_shape_review.csv"),
   file.path("reports", "growth_final_metrics.csv"),
   file.path("reports", "model_dependency_status.csv"),
+  file.path("reports", "model_temporal_validation.csv"),
+  file.path("reports", "model_bootstrap_validation.csv"),
   file.path("reports", "future_review_priorities.csv"),
-  file.path("reports", "historical_section_evidence.csv"),
+  file.path("reports", "intervention_targets.csv"),
+  file.path("reports", "latest_teacher_review.csv"),
+  file.path("reports", "latest_course_review.csv"),
+  file.path("reports", "latest_section_review.csv"),
   file.path("reports", "section_ttests.csv"),
   file.path("reports", "section_adjusted_signals.csv"),
   file.path("reports", "section_signal_highlights.csv"),
@@ -32,60 +37,40 @@ read_display_csv <- function(path, check_names = TRUE) {
   )
 }
 
-profile <- read_display_csv(file.path("reports", "growth_extract_profile.csv"))
-model_comparison <- read_display_csv(
-  file.path("reports", "growth_model_comparison_display.csv"),
-  check_names = FALSE
-)
-shape_review <- read_display_csv(file.path("reports", "growth_shape_review.csv"))
-final_metrics <- read_display_csv(file.path("reports", "growth_final_metrics.csv"))
-dependency_status <- read_display_csv(file.path("reports", "model_dependency_status.csv"))
-future_priorities <- read_display_csv(file.path("reports", "future_review_priorities.csv"))
-historical_evidence <- read_display_csv(file.path("reports", "historical_section_evidence.csv"))
-section_ttests <- read_display_csv(file.path("reports", "section_ttests.csv"))
-section_signals <- read_display_csv(file.path("reports", "section_adjusted_signals.csv"))
-section_highlights <- read_display_csv(file.path("reports", "section_signal_highlights.csv"))
-teacher_summary <- read_display_csv(file.path("reports", "teacher_growth_summary.csv"))
-course_summary <- read_display_csv(file.path("reports", "course_growth_summary.csv"))
-diagnostics <- read_display_csv(file.path("reports", "growth_diagnostics.csv"))
-sensitivity <- read_display_csv(file.path("reports", "growth_sensitivity.csv"))
-
-metric_value <- function(metric_name) {
-  final_metrics$Value[final_metrics$Metric == metric_name][1]
+metric_value <- function(metric_name, default = "") {
+  value <- final_metrics$Value[final_metrics$Metric == metric_name]
+  if (length(value) == 0 || is.na(value[1])) {
+    return(default)
+  }
+  value[1]
 }
 
-profile_value <- function(measure_name) {
-  profile$Value[profile$Measure == measure_name][1]
+profile_value <- function(measure_name, default = "") {
+  value <- profile$Value[profile$Measure == measure_name]
+  if (length(value) == 0 || is.na(value[1])) {
+    return(default)
+  }
+  value[1]
 }
 
 as_report_num <- function(x) {
   suppressWarnings(as.numeric(gsub(",", "", x)))
 }
 
-signed_num <- function(x) {
-  x <- as_report_num(x)
-  ifelse(x > 0, paste0("+", format_num(x, 2)), format_num(x, 2))
+signed_text <- function(x, digits = 2) {
+  value <- as_report_num(x)
+  ifelse(value > 0, paste0("+", format_num(value, digits)), format_num(value, digits))
 }
 
 artifact_ref <- function(path) {
   paste0("[", path, "](", basename(path), ")")
 }
 
-top_n <- function(df, n = 12) {
+top_n <- function(df, n = 10) {
+  if (nrow(df) == 0) {
+    return(df)
+  }
   df[seq_len(min(nrow(df), n)), , drop = FALSE]
-}
-
-short_section_label <- function(section, year) {
-  section <- sub("^Y[0-9]+-", "", section)
-  section_num <- suppressWarnings(as.integer(sub("^SEC-", "", section)))
-  section <- ifelse(is.na(section_num), section, sprintf("S%02d", section_num))
-  year <- paste0(substr(year, 3, 4), "-", substr(year, 8, 9))
-  paste(year, section)
-}
-
-compact_category <- function(category) {
-  out <- ifelse(category == "Within expected range", "In range", category)
-  sub(" expected$", "", out)
 }
 
 pretty_course <- function(course) {
@@ -101,29 +86,11 @@ pretty_course <- function(course) {
     "AP-CALC-BC" = "AP Calc BC",
     "BEYOND-CORE" = "Beyond Core"
   )
-  ifelse(key %in% names(labels), labels[key], gsub("-", " ", key))
+  ifelse(key %in% names(labels), unname(labels[key]), gsub("-", " ", key))
 }
 
 pretty_target <- function(target) {
   ifelse(grepl("^MATH-", target), pretty_course(target), target)
-}
-
-priority_row <- function(priority) {
-  future_priorities[future_priorities$Priority == priority, , drop = FALSE][1, , drop = FALSE]
-}
-
-short_priority <- function(priority) {
-  sub(" review$", "", priority)
-}
-
-compact_priority <- function(priority) {
-  labels <- c(
-    "Teacher support review" = "T support",
-    "Teacher bright spot review" = "T bright",
-    "Course support review" = "C support",
-    "Course bright spot review" = "C bright"
-  )
-  ifelse(priority %in% names(labels), labels[priority], short_priority(priority))
 }
 
 short_model_name <- function(model) {
@@ -142,39 +109,149 @@ short_model_name <- function(model) {
     "Gain random forest" = "Gain RF",
     "EOY random forest" = "EOY RF"
   )
-  ifelse(model %in% names(labels), labels[model], model)
+  ifelse(model %in% names(labels), unname(labels[model]), model)
 }
 
-selected_model <- metric_value("Selected model")
-selected_target <- metric_value("Selected target strategy")
-selected_method <- metric_value("Selected method")
-candidate_count <- metric_value("Candidate models tested")
-included_pairs <- profile_value("Included paired records")
-section_groups <- profile_value("Unique section-year groups")
-teachers <- profile_value("Unique simulated teachers")
-mean_boy <- metric_value("Mean BOY score")
-mean_eoy <- metric_value("Mean EOY score")
-mean_gain <- metric_value("Mean raw BOY/EOY gain")
-cv_gain_rmse <- metric_value("CV expected-gain RMSE")
-cv_gain_r2 <- metric_value("CV expected-gain R-squared")
-cv_eoy_r2 <- metric_value("CV EOY R-squared")
-holdout_gain_rmse <- metric_value("Holdout expected-gain RMSE")
-holdout_gain_r2 <- metric_value("Holdout expected-gain R-squared")
-holdout_eoy_rmse <- metric_value("Holdout EOY RMSE")
-holdout_eoy_r2 <- metric_value("Holdout EOY R-squared")
-category_counts <- table(section_signals$Category)
-above_expected <- ifelse("Above expected" %in% names(category_counts), category_counts[["Above expected"]], 0)
-below_expected <- ifelse("Below expected" %in% names(category_counts), category_counts[["Below expected"]], 0)
-within_expected <- ifelse("Within expected range" %in% names(category_counts), category_counts[["Within expected range"]], 0)
+short_section_label <- function(section) {
+  section_num <- suppressWarnings(as.integer(sub("^Y[0-9]+-SEC-", "", section)))
+  ifelse(is.na(section_num), section, sprintf("S%02d", section_num))
+}
+
+decision_priority <- function(decision) {
+  priorities <- c(
+    "Intervention target" = 1,
+    "Positive anomaly" = 2,
+    "Watch list" = 3,
+    "Insufficient sample" = 4,
+    "In range" = 5
+  )
+  out <- priorities[decision]
+  out[is.na(out)] <- 9
+  as.integer(out)
+}
+
+compact_review <- function(df, id_col, n = 8) {
+  if (nrow(df) == 0) {
+    return(df)
+  }
+  df$PriorityOrder <- decision_priority(df$Decision)
+  df$GapValue <- as_report_num(df$Adjusted_gap)
+  df <- df[
+    df$Decision != "In range" & df$Decision != "Insufficient sample",
+    ,
+    drop = FALSE
+  ]
+  if (nrow(df) == 0) {
+    return(data.frame(
+      Target = character(),
+      N = character(),
+      Raw = character(),
+      Expected = character(),
+      Gap = character(),
+      CI = character(),
+      q = character(),
+      Decision = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  df <- df[order(df$PriorityOrder, df$GapValue), , drop = FALSE]
+  df <- top_n(df, n)
+  target <- df[[id_col]]
+  if (id_col == "course_id") {
+    target <- pretty_course(target)
+  }
+  if (id_col == "section_id") {
+    target <- short_section_label(target)
+  }
+  decision_label <- c(
+    "Intervention target" = "Intervention",
+    "Positive anomaly" = "Bright spot",
+    "Watch list" = "Watch"
+  )
+  decision <- ifelse(df$Decision %in% names(decision_label),
+    unname(decision_label[df$Decision]),
+    df$Decision
+  )
+  data.frame(
+    Target = target,
+    N = df$N,
+    Raw = df$Raw_gain,
+    Expected = df$Expected_gain,
+    Gap = signed_text(df$Adjusted_gap, 2),
+    CI = df$CI_95,
+    q = df$Q_value,
+    Decision = decision,
+    stringsAsFactors = FALSE
+  )
+}
+
+compact_intervention_targets <- function(df, n = 14) {
+  if (nrow(df) == 0) {
+    return(df)
+  }
+  df$PriorityOrder <- decision_priority(df$Decision)
+  df$GapValue <- as_report_num(df$Adjusted_gap)
+  df <- df[order(df$PriorityOrder, df$GapValue), , drop = FALSE]
+  df <- top_n(df, n)
+  target <- df$Target
+  target[df$Level == "Course"] <- pretty_course(target[df$Level == "Course"])
+  target[df$Level == "Section"] <- sub(" / .*", "", target[df$Level == "Section"])
+  target[df$Level == "Section"] <- sub(" \\| .*", "", target[df$Level == "Section"])
+  target[df$Level == "Section"] <- short_section_label(target[df$Level == "Section"])
+  decision_label <- c(
+    "Intervention target" = "Intervention",
+    "Positive anomaly" = "Bright spot",
+    "Watch list" = "Watch"
+  )
+  decision <- ifelse(df$Decision %in% names(decision_label),
+    unname(decision_label[df$Decision]),
+    df$Decision
+  )
+  data.frame(
+    Decision = decision,
+    Slice = df$Level,
+    Target = target,
+    N = df$N,
+    Gap = signed_text(df$Adjusted_gap, 2),
+    `95% CI` = df$CI_95,
+    q = df$Q_value,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
+profile <- read_display_csv(file.path("reports", "growth_extract_profile.csv"))
+model_comparison <- read_display_csv(
+  file.path("reports", "growth_model_comparison_display.csv"),
+  check_names = FALSE
+)
+shape_review <- read_display_csv(file.path("reports", "growth_shape_review.csv"))
+final_metrics <- read_display_csv(file.path("reports", "growth_final_metrics.csv"))
+dependency_status <- read_display_csv(file.path("reports", "model_dependency_status.csv"))
+temporal_validation <- read_display_csv(file.path("reports", "model_temporal_validation.csv"))
+bootstrap_validation <- read_display_csv(file.path("reports", "model_bootstrap_validation.csv"))
+future_priorities <- read_display_csv(file.path("reports", "future_review_priorities.csv"))
+intervention_targets <- read_display_csv(file.path("reports", "intervention_targets.csv"))
+latest_teacher_review <- read_display_csv(file.path("reports", "latest_teacher_review.csv"))
+latest_course_review <- read_display_csv(file.path("reports", "latest_course_review.csv"))
+latest_section_review <- read_display_csv(file.path("reports", "latest_section_review.csv"))
+section_ttests <- read_display_csv(file.path("reports", "section_ttests.csv"))
+section_signals <- read_display_csv(file.path("reports", "section_adjusted_signals.csv"))
+section_highlights <- read_display_csv(file.path("reports", "section_signal_highlights.csv"))
+teacher_summary <- read_display_csv(file.path("reports", "teacher_growth_summary.csv"))
+course_summary <- read_display_csv(file.path("reports", "course_growth_summary.csv"))
+diagnostics <- read_display_csv(file.path("reports", "growth_diagnostics.csv"))
+sensitivity <- read_display_csv(file.path("reports", "growth_sensitivity.csv"))
 
 names(model_comparison) <- c(
   "Model", "Selected", "Role", "Target", "Method", "Params", "CV RMSE",
-  "CV SD", "CV MAE", "CV R2", "CV EOY R2", "Holdout RMSE",
-  "Holdout R2", "Holdout EOY R2", "Delta"
+  "CV SD", "CV MAE", "CV R2", "CV EOY R2", "Temporal RMSE",
+  "Temporal SD", "Temporal R2", "Temporal EOY R2", "Latest RMSE",
+  "Latest R2", "Latest EOY R2", "Delta"
 )
 names(shape_review) <- c(
   "Family", "Representative model", "Why tested", "Decision",
-  "CV RMSE", "Holdout RMSE"
+  "Temporal RMSE", "Latest RMSE"
 )
 names(dependency_status) <- c("Package", "Installed")
 names(section_ttests) <- c(
@@ -197,67 +274,113 @@ names(course_summary) <- c(
   "Course", "Track", "Sections", "Records", "BOY", "EOY", "Raw gain",
   "Expected gain", "Adjusted signal"
 )
-names(future_priorities) <- c(
-  "Priority", "Target", "Mean adjusted gap", "Review signal",
-  "Evidence", "Follow-up"
-)
-names(historical_evidence) <- c(
-  "Priority", "Target", "Section", "Teacher", "Course", "Year", "N",
-  "Raw gain", "Expected gain", "Adjusted signal"
-)
 names(diagnostics) <- c("Diagnostic", "Estimate", "Interpretation")
 names(sensitivity) <- c("Measure", "Value")
 
-support_teacher <- priority_row("Teacher support review")
-bright_teacher <- priority_row("Teacher bright spot review")
-support_course <- priority_row("Course support review")
-bright_course <- priority_row("Course bright spot review")
+selected_model <- metric_value("Selected model")
+selected_target <- metric_value("Selected target strategy")
+selected_method <- metric_value("Selected method")
+selection_rule <- metric_value("Selection rule")
+candidate_count <- metric_value("Candidate models tested")
+included_pairs <- profile_value("Included paired records")
+section_groups <- profile_value("Unique section-year groups")
+teachers <- profile_value("Unique simulated teachers")
+training_records <- metric_value("Training paired records")
+action_records <- metric_value("Latest-year action paired records")
+training_years <- metric_value("Training years")
+action_year <- metric_value("Action year")
+mean_gain <- metric_value("Mean raw BOY/EOY gain")
+latest_gain <- sensitivity$Value[sensitivity$Measure == "Latest-year mean raw BOY/EOY gain"][1]
+temporal_gain_rmse <- metric_value("Temporal expected-gain RMSE")
+temporal_gain_r2 <- metric_value("Temporal expected-gain R-squared")
+temporal_eoy_r2 <- metric_value("Temporal EOY R-squared")
+latest_gain_rmse <- metric_value("Latest-year expected-gain RMSE")
+latest_gain_r2 <- metric_value("Latest-year expected-gain R-squared")
+latest_eoy_r2 <- metric_value("Latest-year EOY R-squared")
+latest_section_groups <- metric_value("Latest-year section groups")
 
-future_priorities_report <- data.frame(
-  Priority = short_priority(future_priorities$Priority),
-  Target = pretty_target(future_priorities$Target),
-  Gap = future_priorities$`Mean adjusted gap`,
-  Evidence = sub(" paired records\\.$", " records", future_priorities$Evidence),
-  stringsAsFactors = FALSE
+selected_row <- model_comparison[model_comparison$Selected == "Yes", , drop = FALSE]
+best_temporal_row <- model_comparison[1, , drop = FALSE]
+
+teacher_priority <- compact_review(latest_teacher_review, "teacher_id", 8)
+course_priority <- compact_review(latest_course_review, "course_id", 8)
+section_priority <- compact_review(latest_section_review, "section_id", 8)
+target_report <- compact_intervention_targets(intervention_targets, 14)
+priority_target_report <- compact_intervention_targets(
+  intervention_targets[
+    intervention_targets$Decision %in% c("Intervention target", "Positive anomaly"),
+    ,
+    drop = FALSE
+  ],
+  8
+)
+if (nrow(priority_target_report) == 0) {
+  priority_target_report <- compact_intervention_targets(intervention_targets, 8)
+}
+
+decision_counts <- data.frame(
+  Slice = c("Teachers", "Courses", "Sections"),
+  `Priority or watch rows` = c(nrow(teacher_priority), nrow(course_priority), nrow(section_priority)),
+  `Total reviewed` = c(
+    nrow(latest_teacher_review),
+    nrow(latest_course_review),
+    nrow(latest_section_review)
+  ),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
 )
 
-historical_evidence_report <- historical_evidence
-historical_evidence_report$Priority <- compact_priority(historical_evidence_report$Priority)
-historical_evidence_report$Section <- short_section_label(
-  historical_evidence_report$Section,
-  historical_evidence_report$Year
-)
-historical_evidence_report$Course <- pretty_course(historical_evidence_report$Course)
-historical_evidence_report <- historical_evidence_report[
-  ,
+model_comparison_compact <- model_comparison
+model_comparison_compact$Model <- short_model_name(model_comparison_compact$Model)
+model_rows <- unique(c(
+  seq_len(min(8, nrow(model_comparison_compact))),
+  which(model_comparison$Role == "Excluded leakage benchmark")[1]
+))
+model_rows <- model_rows[!is.na(model_rows)]
+model_comparison_report <- model_comparison_compact[
+  model_rows,
   c(
-    "Priority", "Section", "Teacher", "Course", "N",
-    "Raw gain", "Expected gain", "Adjusted signal"
+    "Model", "Selected", "Target", "Method", "CV RMSE",
+    "Temporal RMSE", "Latest RMSE", "Latest EOY R2"
   ),
   drop = FALSE
 ]
-names(historical_evidence_report) <- c(
-  "Priority", "Section", "Teacher", "Course", "N", "Raw", "Expected", "Signal"
+names(model_comparison_report) <- c(
+  "Model", "Use", "Target", "Method", "CV RMSE",
+  "Temporal RMSE", "Latest RMSE", "Latest EOY R2"
 )
 
-raw_improvement_report <- top_n(section_ttests, 8)
-raw_improvement_report$Section <- short_section_label(
-  raw_improvement_report$Section,
-  raw_improvement_report$Year
-)
-raw_improvement_report <- raw_improvement_report[
+shape_review_report <- shape_review[
   ,
-  c("Section", "N", "BOY", "EOY", "Gain", "95% CI", "p-value"),
+  c("Family", "Representative model", "Decision", "Temporal RMSE", "Latest RMSE"),
   drop = FALSE
 ]
+shape_review_report[["Representative model"]] <- short_model_name(
+  shape_review_report[["Representative model"]]
+)
+shape_review_report$Decision <- ifelse(
+  grepl("^Selected", shape_review_report$Decision),
+  "Selected",
+  ifelse(grepl("^Excluded", shape_review_report$Decision), "Excluded", "Compared")
+)
+names(shape_review_report) <- c(
+  "Family", "Representative model", "Decision", "Temporal RMSE", "Latest RMSE"
+)
+
+bootstrap_report <- bootstrap_validation
+names(bootstrap_report) <- c("Metric", "Estimate", "CI lower", "CI upper")
+bootstrap_report$Estimate <- format_num(as_report_num(bootstrap_report$Estimate), 3)
+bootstrap_report$`95% interval` <- paste0(
+  format_num(as_report_num(bootstrap_report$`CI lower`), 3),
+  " to ",
+  format_num(as_report_num(bootstrap_report$`CI upper`), 3)
+)
+bootstrap_report <- bootstrap_report[, c("Metric", "Estimate", "95% interval"), drop = FALSE]
 
 section_highlights_report <- section_highlights
-section_highlights_report$Section <- short_section_label(
-  section_highlights_report$Section,
-  section_highlights_report$Year
-)
-section_highlights_report$Category <- compact_category(section_highlights_report$Category)
+section_highlights_report$Section <- short_section_label(section_highlights_report$Section)
 section_highlights_report$Course <- pretty_course(section_highlights_report$Course)
+section_highlights_report$`Adjusted signal` <- signed_text(section_highlights_report$`Adjusted signal`, 2)
 section_highlights_report <- section_highlights_report[
   ,
   c(
@@ -276,36 +399,8 @@ if (nrow(section_highlights_report) > 8) {
   )
 }
 
-shape_review_report <- shape_review[
-  ,
-  c("Family", "Representative model", "Decision", "CV RMSE", "Holdout RMSE"),
-  drop = FALSE
-]
-shape_review_report$Decision <- ifelse(
-  grepl("^Selected", shape_review_report$Decision),
-  "Selected",
-  ifelse(grepl("^Excluded", shape_review_report$Decision), "Excluded", "Compared")
-)
-
-model_comparison_compact <- model_comparison
-model_comparison_compact$Model <- short_model_name(model_comparison_compact$Model)
-model_rows <- unique(c(
-  seq_len(min(6, nrow(model_comparison_compact))),
-  which(model_comparison$Role == "Excluded leakage benchmark")[1]
-))
-model_comparison_report <- model_comparison_compact[
-  model_rows,
-  c(
-    "Model", "Target", "Method", "CV RMSE",
-    "CV R2", "CV EOY R2", "Holdout RMSE"
-  ),
-  drop = FALSE
-]
-names(model_comparison_report) <- c(
-  "Model", "Target", "Method", "CV RMSE", "Gain R2", "EOY R2", "Holdout RMSE"
-)
-
-teacher_summary_report <- top_n(teacher_summary, 12)
+teacher_summary_report <- top_n(teacher_summary, 10)
+teacher_summary_report$`Adjusted signal` <- signed_text(teacher_summary_report$`Adjusted signal`, 2)
 teacher_summary_report <- teacher_summary_report[
   ,
   c("Teacher", "Sections", "Records", "Raw gain", "Expected gain", "Adjusted signal"),
@@ -313,8 +408,9 @@ teacher_summary_report <- teacher_summary_report[
 ]
 names(teacher_summary_report) <- c("Teacher", "Sections", "Records", "Raw", "Expected", "Signal")
 
-course_summary_report <- top_n(course_summary, 12)
+course_summary_report <- top_n(course_summary, 10)
 course_summary_report$Course <- pretty_course(course_summary_report$Course)
+course_summary_report$`Adjusted signal` <- signed_text(course_summary_report$`Adjusted signal`, 2)
 course_summary_report <- course_summary_report[
   ,
   c("Course", "Sections", "Records", "Raw gain", "Expected gain", "Adjusted signal"),
@@ -322,30 +418,78 @@ course_summary_report <- course_summary_report[
 ]
 names(course_summary_report) <- c("Course", "Sections", "Records", "Raw", "Expected", "Signal")
 
-dependency_report <- dependency_status
-dependency_report$Installed <- ifelse(dependency_report$Installed == "TRUE", "Available", "Not installed")
+raw_improvement_report <- top_n(section_ttests, 8)
+raw_improvement_report$Section <- short_section_label(raw_improvement_report$Section)
+raw_improvement_report$Course <- pretty_course(raw_improvement_report$Course)
+raw_improvement_report <- raw_improvement_report[
+  ,
+  c("Section", "Course", "N", "BOY", "EOY", "Gain", "95% CI", "p-value"),
+  drop = FALSE
+]
+
+diagnostics_report <- diagnostics[
+  diagnostics$Diagnostic %in% c(
+    "Latest-year expected-gain RMSE",
+    "Latest-year expected-gain R-squared",
+    "Latest-year EOY R-squared",
+    "Latest-year residual mean",
+    "Latest-year residual SD"
+  ),
+  ,
+  drop = FALSE
+]
+
+sensitivity_report <- sensitivity[
+  sensitivity$Measure %in% c(
+    "Training paired records",
+    "Latest-year paired records",
+    "Latest-year section-year groups",
+    "Latest-year mean raw BOY/EOY gain",
+    "Latest-year raw-vs-adjusted rank correlation",
+    "Latest-year top-10 overlap, raw vs adjusted ranking"
+  ),
+  ,
+  drop = FALSE
+]
 
 appendix_metric_names <- c(
   "Selected model",
   "Selected target strategy",
   "Selected method",
+  "Selection rule",
+  "Training paired records",
+  "Latest-year action paired records",
+  "Training years",
+  "Action year",
   "Candidate models tested",
   "Operational candidates tested",
+  "Excluded leakage benchmarks",
   "Repeated CV folds",
   "Repeated CV repeats",
-  "CV expected-gain RMSE",
-  "CV expected-gain R-squared",
-  "CV EOY R-squared",
-  "Holdout expected-gain RMSE",
-  "Holdout expected-gain R-squared",
-  "Holdout EOY R-squared",
-  "Mean raw BOY/EOY gain"
+  "Temporal expected-gain RMSE",
+  "Temporal expected-gain R-squared",
+  "Temporal EOY R-squared",
+  "Latest-year expected-gain RMSE",
+  "Latest-year expected-gain R-squared",
+  "Latest-year EOY R-squared"
 )
 appendix_metrics <- final_metrics[
   match(appendix_metric_names, final_metrics$Metric),
   ,
   drop = FALSE
 ]
+appendix_metrics <- appendix_metrics[!is.na(appendix_metrics$Metric), , drop = FALSE]
+
+dependency_report <- dependency_status
+dependency_report$Installed <- ifelse(dependency_report$Installed == "TRUE", "Available", "Not installed")
+
+selection_delta <- if (nrow(selected_row) > 0) {
+  selected_delta <- as_report_num(selected_row$`Temporal RMSE`) -
+    as_report_num(best_temporal_row$`Temporal RMSE`)
+  format_num(selected_delta, 3)
+} else {
+  ""
+}
 
 report_lines <- c(
   "# Assessment Growth and Section Performance Analytics in R",
@@ -353,137 +497,146 @@ report_lines <- c(
   "## Recommendation",
   "",
   paste0(
-    "This study uses seven years of public-safe BOY/EOY assessment history to build an expected-score baseline for future instructional planning. ",
-    "The decision question is not which historical section requires action; those sections are already in the past. ",
-    "The decision question is which teachers and courses should receive closer review before the next assessment cycle because their historical growth patterns were directionally above or below expectation."
+    "Use the latest completed assessment year, **", action_year,
+    "**, to identify teacher, course, and section patterns that deserve review before the next cycle. ",
+    "The stakeholder metric is **BOY/EOY score gain**: end-of-year score minus beginning-of-year score for the same public-safe student record."
   ),
   "",
   paste0(
-    "Use **BOY/EOY score gain** as the stakeholder metric: EOY score minus BOY score. ",
-    "Use the model only to set the expected baseline for students with similar starting scores, readiness, attendance, grade level, course track, and school-year context. ",
-    "A positive signal means growth was above expectation; a negative signal means growth was below expectation."
+    "The decision system does not ask whether old sections should be managed retroactively. ",
+    "It asks whether the most recent actual growth was materially above or below an expected-growth baseline trained only on prior years."
   ),
   "",
   paste0(
-    "The future-facing review priorities are **", support_teacher$Target,
-    "** for teacher support, **", bright_teacher$Target,
-    "** as a teacher bright spot, **", pretty_target(support_course$Target),
-    "** for course support, and **", pretty_target(bright_course$Target),
-    "** as a course bright spot. These are review priorities, not personnel ratings."
+    "The baseline selected for operations is **", selected_model, "**. ",
+    "It predicts EOY score and converts that prediction into expected gain. ",
+    "The latest-year EOY baseline R-squared is **", latest_eoy_r2,
+    "** and the latest-year expected-gain RMSE is **", latest_gain_rmse, "** points."
   ),
   "",
-  markdown_table(future_priorities_report),
+  paste0(
+    "The latest-year gain R-squared is **", latest_gain_r2,
+    "**. That is not treated as a failure condition because individual score gain is noisy after starting score is removed. ",
+    "The workflow uses the model to create a fair baseline, then makes decisions from aggregate teacher, course, and section residuals with bootstrap uncertainty checks."
+  ),
   "",
-  "The gap column is the average observed-minus-expected BOY/EOY gain. The generated CSV also keeps the reliability-weighted review signal used to rank recurring patterns.",
+  markdown_table(decision_counts),
+  "",
+  markdown_table(priority_target_report),
+  "",
+  paste0(
+    "The full decision table, including watch-list rows, is generated as ",
+    artifact_ref("reports/intervention_targets.csv"), "."
+  ),
   "",
   "<!-- PDF_PAGE_BREAK -->",
   "",
-  "## Approach and Rationale",
+  "## Plain-English Method",
+  "",
+  "1. Build a paired BOY/EOY growth extract from public-safe assessment records.",
+  "2. Train candidate expected-growth models on prior years only.",
+  "3. Select the operating baseline using leave-one-year-out temporal validation, with repeated CV and bootstrap checks as supporting evidence.",
+  "4. Score the latest year against that prior-year baseline.",
+  "5. Aggregate observed-minus-expected growth by teacher, course, and section.",
+  "6. Flag review targets only when the gap is large enough to matter and the uncertainty check supports follow-up.",
   "",
   paste0(
-    "The analysis includes ", included_pairs, " paired BOY/EOY records across ",
-    section_groups, " historical section-year groups and ", teachers,
-    " simulated teachers. The mean BOY score is ", mean_boy,
-    ", the mean EOY score is ", mean_eoy,
-    ", and the mean raw gain is ", mean_gain, " points."
+    "This design separates the prediction problem from the decision problem. ",
+    "The prediction model estimates what growth would be expected for a similar starting profile; the review layer asks where actual growth departed from that expectation."
   ),
-  "",
-  paste0(
-    "The selected baseline is **", selected_model, "**, a ", selected_method,
-    " using the ", selected_target, " target. The model search tested ",
-    candidate_count, " candidates across linear, interaction, GAM, random-forest, ",
-    "gradient-boosting, and leakage-check specifications."
-  ),
-  "",
-  paste0(
-    "The model's holdout expected-gain R-squared is **", holdout_gain_r2,
-    "**, while its holdout EOY R-squared is **", holdout_eoy_r2,
-    "**. This difference is expected: BOY score explains much of final EOY score, ",
-    "but year-over-year gain is noisier after the starting score is removed. ",
-    "That is why the report aggregates signals at the teacher and course level instead of acting on individual predictions."
-  ),
-  "",
-  "The operating baseline intentionally excludes teacher IDs, course IDs, and section IDs. Including those IDs would make the prediction slightly different, but it would also subtract away the persistent teacher and course patterns this study is designed to surface for future review.",
   "",
   "## Direct Answers",
   "",
-  "1. The main metric is BOY/EOY improvement: end-of-year score minus beginning-of-year score for the same public-safe student record.",
-  paste0("2. The average raw gain is ", mean_gain, " points across ", included_pairs, " paired records."),
-  paste0("3. The strongest baseline predicts EOY score and converts it to expected gain; holdout EOY R-squared is ", holdout_eoy_r2, " and holdout expected-gain RMSE is ", holdout_gain_rmse, "."),
-  paste0("4. Historical sections are evidence, not future action targets. The review layer flags ", above_expected, " historical section-year groups above expected growth and ", below_expected, " below expected growth, with ", within_expected, " within expected range."),
-  paste0(
-    "5. Recommended next-cycle review targets are ", support_teacher$Target,
-    " for teacher support, ", bright_teacher$Target, " for teacher bright-spot learning, ",
-    pretty_target(support_course$Target), " for course support, and ",
-    pretty_target(bright_course$Target), " as a course bright spot."
-  ),
+  paste0("1. The analysis covers ", included_pairs, " paired BOY/EOY records across ", section_groups, " section-year groups and ", teachers, " public-safe teacher identifiers."),
+  paste0("2. The training window is ", training_years, "; the action year is ", action_year, "."),
+  paste0("3. The average raw gain across the full extract is ", mean_gain, " points; the latest-year raw gain is ", latest_gain, " points."),
+  paste0("4. The model search tested ", candidate_count, " candidate baselines across parametric, nonlinear, ensemble, and leakage-check families."),
+  paste0("5. The selected baseline has temporal expected-gain RMSE ", temporal_gain_rmse, " and latest-year expected-gain RMSE ", latest_gain_rmse, "."),
+  "6. Teacher, course, and section flags are audit priorities. They are not automatic personnel ratings or causal claims.",
   "",
   "## Data Audit",
   "",
-  "The analysis starts from a public-safe assessment extract. A record enters the growth model only when the same public-safe student has valid BOY and EOY scores in the same section and with the same simulated teacher. This keeps the improvement metric tied to one section experience instead of mixing students across sections.",
+  "A record enters the growth model only when the same public-safe student has valid BOY and EOY scores in the same section and teacher context. This keeps improvement tied to one instructional experience instead of mixing students across sections.",
   "",
   markdown_table(profile),
   "",
   "<!-- PDF_PAGE_BREAK -->",
   "",
-  "## Future Review Priorities",
-  "",
-  "The recommendations below are the operational layer of the study. They use all seven years of historical evidence, weighted toward recurring teacher and course patterns. The purpose is to decide what to review before the next cycle, not to treat past sections as current operational units.",
-  "",
-  markdown_table(future_priorities_report),
-  "",
-  "The table below shows the historical section evidence behind those priorities. It is intentionally placed after the future priorities because historical sections explain the signal; they are not the action target.",
-  "",
-  markdown_table(historical_evidence_report),
+  "## Model Selection",
   "",
   paste0(
-    "The full future-priority table is generated as ",
-    artifact_ref("reports/future_review_priorities.csv"),
-    ", and the supporting historical evidence table is generated as ",
-    artifact_ref("reports/historical_section_evidence.csv"), "."
+    "The model search used ", training_records, " prior-year pairs and held out ",
+    action_records, " latest-year pairs for action-year evaluation. ",
+    "The primary selection metric is temporal expected-gain RMSE, not latest-year performance, so the system does not choose a model by looking at the year it later reviews."
   ),
-  "",
-  "<!-- PDF_PAGE_BREAK -->",
-  "",
-  "## Raw Section Improvement",
-  "",
-  "The first descriptive layer calculates BOY/EOY score gain inside each historical section-year group and runs a paired-improvement t-test against zero. This answers whether a section improved, but it does not by itself show whether the section improved more than expected for its starting profile.",
   "",
   paste0(
-    "The table below shows high-signal historical section-year groups from the review layer, with raw BOY/EOY t-test results included for context. The full section t-test table is generated as ",
-    artifact_ref("reports/section_ttests.csv"), "."
+    "The best raw temporal RMSE was **", best_temporal_row$`Temporal RMSE`,
+    "** from **", best_temporal_row$Model, "**. ",
+    "The selected model's temporal RMSE was **", selected_row$`Temporal RMSE`,
+    "**, a difference of ", selection_delta,
+    " points. The simpler model was selected under the pre-specified rule because the difference was not operationally meaningful."
   ),
-  "",
-  markdown_table(raw_improvement_report),
-  "",
-  "![Distribution of BOY/EOY improvement](../figures/growth_distribution.png)",
-  "",
-  "## Expected-Growth Baseline",
-  "",
-  "The adjusted model estimates expected BOY/EOY gain from starting score/readiness and context. This is the key step that makes the analysis more useful than a raw gain ranking: it accounts for floor effects, ceiling effects, attendance context, course track, grade level, and school-year timing.",
-  "",
-  "![Nonparametric and parametric BOY score shape](../figures/baseline_growth_shape.png)",
-  "",
-  "<!-- PDF_PAGE_BREAK -->",
-  "",
-  "**Model family review**",
   "",
   markdown_table(shape_review_report),
   "",
   markdown_table(model_comparison_report),
   "",
   paste0(
-    "The compact table shows the strongest candidates by repeated-CV RMSE plus the leakage check. The full model-comparison table is generated as ",
-    artifact_ref("reports/growth_model_comparison_display.csv"), "."
+    "Full model artifacts: ",
+    artifact_ref("reports/growth_model_comparison_display.csv"),
+    ", ",
+    artifact_ref("reports/model_temporal_validation.csv"),
+    ", and ",
+    artifact_ref("reports/model_bootstrap_validation.csv"), "."
   ),
   "",
   "![Expected-growth model comparison](../figures/growth_model_comparison.png)",
   "",
   "<!-- PDF_PAGE_BREAK -->",
   "",
-  "## Historical Section Signals",
+  "## Latest-Year Review Targets",
   "",
-  "For each historical section-year group, the adjusted signal is the reliability-weighted average residual: observed gain minus expected gain, weighted toward zero for smaller groups. Positive values mean the section improved more than expected for its starting mix; negative values mean it improved less than expected.",
+  paste0(
+    "The latest-year review layer compares observed gain with expected gain for ",
+    latest_section_groups, " section groups. ",
+    "The decision labels use a practical audit threshold: material gap, bootstrap interval direction, and BH-adjusted q-value for multiple-review control."
+  ),
+  "",
+  "**Teacher review**",
+  "",
+  markdown_table(teacher_priority),
+  "",
+  "**Course review**",
+  "",
+  markdown_table(course_priority),
+  "",
+  "**Section evidence**",
+  "",
+  markdown_table(section_priority),
+  "",
+  paste0(
+    "Full review tables: ",
+    artifact_ref("reports/latest_teacher_review.csv"),
+    ", ",
+    artifact_ref("reports/latest_course_review.csv"),
+    ", and ",
+    artifact_ref("reports/latest_section_review.csv"), "."
+  ),
+  "",
+  "<!-- PDF_PAGE_BREAK -->",
+  "",
+  "## Section Evidence",
+  "",
+  "Raw section improvement is useful for communication, but it is not the final comparison. A section can show positive raw gain and still fall below expected growth if its starting profile suggested a larger increase.",
+  "",
+  markdown_table(raw_improvement_report),
+  "",
+  "![Distribution of BOY/EOY improvement](../figures/growth_distribution.png)",
+  "",
+  "<!-- PDF_PAGE_BREAK -->",
+  "",
+  "The adjusted section signal is observed gain minus expected gain, reliability-weighted toward zero for smaller sections.",
   "",
   markdown_table(section_highlights_report),
   "",
@@ -491,19 +644,16 @@ report_lines <- c(
   "",
   paste0(
     "The full section signal table is generated as ",
-    artifact_ref("reports/section_adjusted_signals.csv"),
-    " so reviewers can inspect all historical section-year groups, not only the highlights shown in the report."
+    artifact_ref("reports/section_adjusted_signals.csv"), "."
   ),
   "",
   "<!-- PDF_PAGE_BREAK -->",
   "",
-  "## Teacher and Course Signal Summary",
+  "## Teacher and Course Summaries",
   "",
-  "Teacher and course summaries aggregate the historical section evidence into future-facing review signals. They are useful for identifying where leaders may want to inspect pacing, curriculum alignment, attendance mix, or practices worth transferring. They should not be treated as standalone teacher quality scores.",
+  "These summaries aggregate the latest-year evidence into planning views. They support review conversations about pacing, curriculum alignment, attendance mix, and transferable practices. They should not be read as standalone personnel scores.",
   "",
   markdown_table(teacher_summary_report),
-  "",
-  "**Course-level summary**",
   "",
   markdown_table(course_summary_report),
   "",
@@ -513,17 +663,22 @@ report_lines <- c(
   "",
   "## Diagnostics and Sensitivity",
   "",
-  "The diagnostics below separate two questions: how well the model predicts the expected baseline, and how much raw section rankings change after adjustment. The EOY R-squared describes baseline strength; the gain R-squared describes how noisy individual growth remains after BOY score is removed.",
+  paste0(
+    "The baseline is strong for final-score expectation and weaker for individual gain variation. ",
+    "That pattern is expected: BOY score explains much of EOY score, while individual improvement contains more unobserved classroom, attendance, and assessment noise."
+  ),
   "",
-  markdown_table(diagnostics),
+  markdown_table(diagnostics_report),
   "",
-  markdown_table(sensitivity),
+  markdown_table(bootstrap_report),
+  "",
+  markdown_table(sensitivity_report),
   "",
   "![Growth model diagnostics](../figures/growth_diagnostics.png)",
   "",
   "## Technical Appendix",
   "",
-  "The expanded model search used the installed R packages below. The operating model excludes persistent teacher, course, and section IDs; the leakage benchmark is reported only to show why those fields should not be used inside the baseline.",
+  "The operating model excludes teacher IDs, course IDs, and section IDs. A leakage benchmark is reported only to show what would happen if persistent IDs were included in the baseline; it is not used for review because it would absorb the teacher/course patterns the decision layer is designed to detect.",
   "",
   markdown_table(dependency_report),
   "",
@@ -534,12 +689,13 @@ report_lines <- c(
     artifact_ref("reports/growth_final_metrics.csv"), "."
   ),
   "",
-  "## Bottom Line",
+  "## Conclusion",
   "",
-  "- BOY/EOY improvement is the right stakeholder metric because it is easy to explain and aligned with instructional growth.",
-  "- The expected-score baseline should be used to create fairer teacher and course review signals, not to rank individual students or automate personnel decisions.",
-  "- Historical sections should be treated as evidence. Future action should focus on recurring teacher and course patterns before the next cycle.",
-  "- The model predicts final EOY score strongly, but individual gain remains noisy; aggregate signals and human review are necessary.",
+  "The project should be read as a statistical decision-support system, not as a simple prediction demo. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline, quantify uncertainty by slice, and translate the evidence into review priorities.",
+  "",
+  "The recommended stakeholder action is to review the flagged teacher, course, and section patterns before the next assessment cycle. Priority targets deserve support or investigation; positive anomalies deserve study for transferable practices; watch-list rows deserve context review before escalation.",
+  "",
+  "The important limitation is that the data are public-safe and generalized from an assessment workflow. The outputs demonstrate the analysis pattern and should not be used as real student, teacher, or personnel decisions.",
   "",
   "## Reproducibility",
   "",
@@ -556,36 +712,29 @@ executive_lines <- c(
   "# Executive Brief: Assessment Growth and Section Performance",
   "",
   paste0(
-    "**Purpose:** use seven years of public-safe BOY/EOY assessment history to identify teacher and course patterns that deserve review before the next assessment cycle."
+    "**Purpose:** use prior-year BOY/EOY assessment history to build an expected-growth baseline, then review the latest completed year for teacher, course, and section patterns that deserve action before the next cycle."
   ),
   "",
   paste0(
-    "**Headline metric:** average raw BOY/EOY gain is ", mean_gain,
-    " points across ", included_pairs, " paired records."
+    "**Action year:** ", action_year,
+    "; latest-year paired records: ", action_records,
+    "; latest-year raw gain: ", latest_gain, " points."
   ),
   "",
   paste0(
-    "**Baseline:** selected model is ", selected_model,
-    " with holdout EOY R-squared ", holdout_eoy_r2,
-    " and holdout expected-gain RMSE ", holdout_gain_rmse, "."
+    "**Baseline:** ", selected_model,
+    " selected from ", candidate_count,
+    " candidates. Temporal expected-gain RMSE is ", temporal_gain_rmse,
+    "; latest-year EOY R-squared is ", latest_eoy_r2, "."
   ),
   "",
   paste0(
-    "**Future priorities:** review ", support_teacher$Target,
-    " for support, study ", bright_teacher$Target,
-    " as a bright spot, review ", pretty_target(support_course$Target),
-    " for course support, and use ", pretty_target(bright_course$Target),
-    " as a course reference pattern."
+    "**Decision logic:** observed gain minus expected gain, reviewed by teacher, course, and section with bootstrap intervals and BH-adjusted q-values."
   ),
   "",
-  "**Guardrail:** historical sections explain the signal, but future action should focus on upcoming teacher/course planning. Do not use the outputs for automatic teacher evaluation, compensation, discipline, or personnel decisions.",
+  markdown_table(priority_target_report),
   "",
-  "## Decisions for Stakeholders",
-  "",
-  "- Decide which teacher/course review conversations should happen before the next cycle.",
-  "- Compare raw gains with adjusted gains before drawing conclusions.",
-  "- Use historical section evidence as context, not as the future recommendation itself.",
-  "- Monitor pairing rates, section sizes, and course mix before operationalizing the workflow."
+  "**Guardrail:** the outputs are review priorities, not automatic teacher evaluation, compensation, discipline, or personnel decisions."
 )
 
 writeLines(executive_lines, file.path("reports", "executive_brief.md"))
@@ -595,7 +744,7 @@ model_card_lines <- c(
   "",
   "## Intended Use",
   "",
-  "Estimate an expected BOY/EOY assessment-growth baseline and identify public-safe teacher/course patterns that deserve future instructional review.",
+  "Estimate an expected BOY/EOY assessment-growth baseline and identify public-safe teacher, course, and section patterns that deserve future instructional review.",
   "",
   "## Not Intended For",
   "",
@@ -605,7 +754,8 @@ model_card_lines <- c(
   "",
   paste0(
     "Public-safe paired BOY/EOY assessment records with ", included_pairs,
-    " modeled pairs, simulated identifiers, generalized score/readiness behavior, and no real student-identifiable or personnel records."
+    " modeled pairs. The action-year review uses ", action_records,
+    " latest-year pairs. Identifiers are simulated and generalized; no real student-identifiable or personnel records are included."
   ),
   "",
   "## Model",
@@ -615,9 +765,15 @@ model_card_lines <- c(
     ". Candidate families include direct gain models, predicted EOY models, interaction surfaces, GAM smooths, random forests, gradient boosting, and an excluded teacher/course ID leakage check."
   ),
   "",
-  "## Performance",
+  "## Validation",
   "",
-  markdown_table(final_metrics),
+  markdown_table(appendix_metrics),
+  "",
+  markdown_table(bootstrap_report),
+  "",
+  "## Decision Layer",
+  "",
+  "Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, and decision labels. The labels are audit priorities, not causal claims.",
   "",
   "## Monitoring Recommendations",
   "",

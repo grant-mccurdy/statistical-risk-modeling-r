@@ -214,13 +214,224 @@ summarize_regression_cv <- function(cv_results) {
   summary[order(summary$CV_RMSE), ]
 }
 
+run_temporal_validation <- function(data, specs, years, seed = 20260623) {
+  results <- list()
+  counter <- 1
+
+  for (validation_year in years) {
+    train_data <- data[data$school_year != validation_year, , drop = FALSE]
+    test_data <- data[data$school_year == validation_year, , drop = FALSE]
+    for (spec in specs) {
+      fit <- fit_candidate(
+        spec,
+        train_data,
+        seed = seed + match(validation_year, years)
+      )
+      expected_gain <- predict_expected_gain(fit, spec, test_data)
+      metrics <- evaluate_expected_gain(test_data, expected_gain)
+      results[[counter]] <- data.frame(
+        Model = spec$name,
+        Target = target_label(spec$target),
+        Method = method_label(spec$method),
+        Role = spec$role,
+        ValidationYear = validation_year,
+        N = nrow(test_data),
+        RMSE = metrics$Gain_RMSE,
+        MAE = metrics$Gain_MAE,
+        R2 = metrics$Gain_R2,
+        EOY_RMSE = metrics$EOY_RMSE,
+        EOY_R2 = metrics$EOY_R2,
+        stringsAsFactors = FALSE
+      )
+      counter <- counter + 1
+    }
+  }
+
+  do.call(rbind, results)
+}
+
+summarize_temporal_validation <- function(temporal_results) {
+  means <- aggregate(
+    cbind(RMSE, MAE, R2, EOY_RMSE, EOY_R2) ~ Model + Target + Method + Role,
+    temporal_results,
+    mean
+  )
+  sds <- aggregate(
+    cbind(RMSE, MAE, R2) ~ Model + Target + Method + Role,
+    temporal_results,
+    sd
+  )
+  names(means) <- c(
+    "Model", "Target", "Method", "Role", "Temporal_RMSE",
+    "Temporal_MAE", "Temporal_R2", "Temporal_EOY_RMSE", "Temporal_EOY_R2"
+  )
+  names(sds) <- c(
+    "Model", "Target", "Method", "Role", "Temporal_RMSE_SD",
+    "Temporal_MAE_SD", "Temporal_R2_SD"
+  )
+  summary <- merge(means, sds, by = c("Model", "Target", "Method", "Role"))
+  summary[order(summary$Temporal_RMSE), ]
+}
+
+bootstrap_model_validation <- function(data, expected_gain, reps = 300,
+                                       seed = 20260623) {
+  set.seed(seed)
+  metric_rows <- replicate(reps, {
+    idx <- sample(seq_len(nrow(data)), size = nrow(data), replace = TRUE)
+    metrics <- evaluate_expected_gain(data[idx, , drop = FALSE], expected_gain[idx])
+    c(
+      Gain_RMSE = metrics$Gain_RMSE,
+      Gain_MAE = metrics$Gain_MAE,
+      Gain_R2 = metrics$Gain_R2,
+      EOY_RMSE = metrics$EOY_RMSE,
+      EOY_R2 = metrics$EOY_R2
+    )
+  })
+  metric_rows <- t(metric_rows)
+  estimates <- evaluate_expected_gain(data, expected_gain)
+  data.frame(
+    Metric = c(
+      "Expected-gain RMSE", "Expected-gain MAE", "Expected-gain R-squared",
+      "EOY RMSE", "EOY R-squared"
+    ),
+    Estimate = c(
+      estimates$Gain_RMSE, estimates$Gain_MAE, estimates$Gain_R2,
+      estimates$EOY_RMSE, estimates$EOY_R2
+    ),
+    CI_Lower = apply(metric_rows, 2, quantile, probs = 0.025, na.rm = TRUE),
+    CI_Upper = apply(metric_rows, 2, quantile, probs = 0.975, na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+}
+
+bootstrap_gap_summary <- function(values, reps = 300, seed = 20260623) {
+  set.seed(seed)
+  n <- length(values)
+  observed <- mean(values)
+  if (n <= 1 || is.na(observed)) {
+    return(c(
+      Gap = observed, CI_Lower = NA_real_, CI_Upper = NA_real_,
+      P_Value = NA_real_
+    ))
+  }
+  boots <- replicate(reps, mean(sample(values, size = n, replace = TRUE)))
+  p_value <- 2 * min(mean(boots <= 0), mean(boots >= 0))
+  p_value <- min(max(p_value, 1 / (reps + 1)), 1)
+  c(
+    Gap = observed,
+    CI_Lower = as.numeric(quantile(boots, probs = 0.025, na.rm = TRUE)),
+    CI_Upper = as.numeric(quantile(boots, probs = 0.975, na.rm = TRUE)),
+    P_Value = p_value
+  )
+}
+
+decision_flag <- function(gap, lower, upper, q_value, n, min_n,
+                          effect_threshold = 0.75,
+                          q_threshold = 0.20) {
+  if (is.na(n) || n < min_n) {
+    return("Insufficient sample")
+  }
+  if (!is.na(q_value) && !is.na(lower) && !is.na(upper) &&
+      gap <= -effect_threshold && upper < 0 && q_value <= q_threshold) {
+    return("Intervention target")
+  }
+  if (!is.na(q_value) && !is.na(lower) && !is.na(upper) &&
+      gap >= effect_threshold && lower > 0 && q_value <= q_threshold) {
+    return("Positive anomaly")
+  }
+  if (!is.na(gap) && abs(gap) >= effect_threshold) {
+    return("Watch list")
+  }
+  "In range"
+}
+
+make_latest_review <- function(data, group_vars, level, min_n, reps = 300,
+                               seed = 20260623) {
+  group_key <- do.call(paste, c(data[group_vars], sep = " | "))
+  split_data <- split(data, group_key)
+  median_n <- median(vapply(split_data, nrow, integer(1)))
+
+  rows <- lapply(seq_along(split_data), function(i) {
+    df <- split_data[[i]]
+    gap_stats <- bootstrap_gap_summary(
+      df$adjusted_growth_residual,
+      reps = reps,
+      seed = seed + i
+    )
+    n <- nrow(df)
+    reliability_weight <- n / (n + median_n)
+    base <- data.frame(
+      Level = level,
+      Target = names(split_data)[i],
+      N = n,
+      RawGain = mean(df$score_gain),
+      ExpectedGain = mean(df$expected_gain),
+      AdjustedGap = gap_stats[["Gap"]],
+      ReliabilityWeight = reliability_weight,
+      ReviewSignal = gap_stats[["Gap"]] * reliability_weight,
+      CI_Lower = gap_stats[["CI_Lower"]],
+      CI_Upper = gap_stats[["CI_Upper"]],
+      P_Value = gap_stats[["P_Value"]],
+      stringsAsFactors = FALSE
+    )
+    for (var in group_vars) {
+      base[[var]] <- as.character(df[[var]][1])
+    }
+    base
+  })
+
+  review <- do.call(rbind, rows)
+  review$Q_Value <- p.adjust(review$P_Value, method = "BH")
+  review$Decision <- mapply(
+    decision_flag,
+    review$AdjustedGap,
+    review$CI_Lower,
+    review$CI_Upper,
+    review$Q_Value,
+    review$N,
+    MoreArgs = list(min_n = min_n),
+    USE.NAMES = FALSE
+  )
+  review[order(review$ReviewSignal), ]
+}
+
+format_review_table <- function(review, id_cols) {
+  target <- if ("Target" %in% names(review)) {
+    review$Target
+  } else {
+    review$DisplayTarget
+  }
+  output <- data.frame(
+    Level = review$Level,
+    Target = target,
+    N = review$N,
+    Raw_gain = format_num(review$RawGain, 2),
+    Expected_gain = format_num(review$ExpectedGain, 2),
+    Adjusted_gap = format_num(review$AdjustedGap, 2),
+    CI_95 = paste0(
+      format_num(review$CI_Lower, 2),
+      " to ",
+      format_num(review$CI_Upper, 2)
+    ),
+    P_value = format_p(review$P_Value),
+    Q_value = format_p(review$Q_Value),
+    Decision = review$Decision,
+    stringsAsFactors = FALSE
+  )
+  for (col in rev(id_cols)) {
+    output <- cbind(setNames(data.frame(review[[col]], stringsAsFactors = FALSE), col), output)
+  }
+  output
+}
+
 section_key <- paste(growth$section_id, growth$school_year, sep = " | ")
 growth$section_year_id <- section_key
 
-set.seed(20260623)
-train_idx <- sort(sample(seq_len(nrow(growth)), size = floor(0.80 * nrow(growth))))
-train_data <- growth[train_idx, , drop = FALSE]
-holdout_data <- growth[-train_idx, , drop = FALSE]
+school_years <- sort(unique(growth$school_year))
+action_year <- tail(school_years, 1)
+training_years <- setdiff(school_years, action_year)
+train_data <- growth[growth$school_year %in% training_years, , drop = FALSE]
+action_data <- growth[growth$school_year == action_year, , drop = FALSE]
 
 candidate_specs <- list(
   make_spec(
@@ -413,67 +624,102 @@ cv_results <- run_repeated_model_cv(
 )
 
 cv_summary <- summarize_regression_cv(cv_results)
+temporal_results <- run_temporal_validation(
+  data = train_data,
+  specs = candidate_specs,
+  years = training_years
+)
+temporal_summary <- summarize_temporal_validation(temporal_results)
 names(candidate_specs) <- vapply(candidate_specs, `[[`, character(1), "name")
 candidate_fits <- lapply(candidate_specs, function(spec) {
   fit_candidate(spec, train_data)
 })
 
-holdout_metrics <- do.call(rbind, lapply(names(candidate_specs), function(model_name) {
+action_metrics <- do.call(rbind, lapply(names(candidate_specs), function(model_name) {
   spec <- candidate_specs[[model_name]]
-  expected_gain <- predict_expected_gain(candidate_fits[[model_name]], spec, holdout_data)
-  metrics <- evaluate_expected_gain(holdout_data, expected_gain)
+  expected_gain <- predict_expected_gain(candidate_fits[[model_name]], spec, action_data)
+  metrics <- evaluate_expected_gain(action_data, expected_gain)
   data.frame(
     Model = model_name,
-    Holdout_RMSE = metrics$Gain_RMSE,
-    Holdout_MAE = metrics$Gain_MAE,
-    Holdout_R2 = metrics$Gain_R2,
-    Holdout_EOY_RMSE = metrics$EOY_RMSE,
-    Holdout_EOY_R2 = metrics$EOY_R2,
+    Action_RMSE = metrics$Gain_RMSE,
+    Action_MAE = metrics$Gain_MAE,
+    Action_R2 = metrics$Gain_R2,
+    Action_EOY_RMSE = metrics$EOY_RMSE,
+    Action_EOY_R2 = metrics$EOY_R2,
     AIC = ifelse(spec$method %in% c("lm", "gam"), AIC(candidate_fits[[model_name]]), NA_real_),
     Parameters = spec$parameters,
     stringsAsFactors = FALSE
   )
 }))
 
-model_comparison <- merge(cv_summary, holdout_metrics, by = "Model")
-model_comparison <- model_comparison[order(model_comparison$CV_RMSE), ]
+model_comparison <- merge(cv_summary, temporal_summary, by = c("Model", "Target", "Method", "Role"))
+model_comparison <- merge(model_comparison, action_metrics, by = "Model")
+model_comparison <- model_comparison[order(model_comparison$Temporal_RMSE), ]
 
 selection_candidates <- model_comparison[
   model_comparison$Role == "Operational candidate",
   ,
   drop = FALSE
 ]
-selected_model_name <- selection_candidates$Model[
-  which.min(selection_candidates$CV_RMSE)
+best_temporal_rmse <- min(selection_candidates$Temporal_RMSE)
+within_one_percent <- selection_candidates[
+  selection_candidates$Temporal_RMSE <= best_temporal_rmse * 1.01,
+  ,
+  drop = FALSE
 ]
+method_rank <- c("Linear model" = 1, "GAM" = 2, "Gradient boosting" = 3, "Random forest" = 4)
+target_rank <- c("Predicted EOY" = 1, "Predicted gain" = 2)
+within_one_percent$MethodRank <- method_rank[within_one_percent$Method]
+within_one_percent$TargetRank <- target_rank[within_one_percent$Target]
+within_one_percent$MethodRank[is.na(within_one_percent$MethodRank)] <- 99
+within_one_percent$TargetRank[is.na(within_one_percent$TargetRank)] <- 99
+within_one_percent <- within_one_percent[
+  order(
+    within_one_percent$MethodRank,
+    within_one_percent$Parameters,
+    within_one_percent$TargetRank,
+    within_one_percent$Temporal_RMSE
+  ),
+  ,
+  drop = FALSE
+]
+selected_model_name <- within_one_percent$Model[1]
 
 model_comparison$Selected <- model_comparison$Model == selected_model_name
-model_comparison$Delta_CV_RMSE <- model_comparison$CV_RMSE -
-  min(selection_candidates$CV_RMSE)
+model_comparison$Delta_Temporal_RMSE <- model_comparison$Temporal_RMSE -
+  best_temporal_rmse
 model_comparison <- model_comparison[
-  order(model_comparison$CV_RMSE),
+  order(model_comparison$Temporal_RMSE),
   c(
     "Model", "Selected", "Role", "Target", "Method", "Parameters",
     "CV_RMSE", "CV_RMSE_SD", "CV_MAE", "CV_R2", "CV_EOY_RMSE",
-    "CV_EOY_R2", "Holdout_RMSE", "Holdout_MAE", "Holdout_R2",
-    "Holdout_EOY_RMSE", "Holdout_EOY_R2", "AIC", "Delta_CV_RMSE"
+    "CV_EOY_R2", "Temporal_RMSE", "Temporal_RMSE_SD", "Temporal_MAE",
+    "Temporal_R2", "Temporal_EOY_RMSE", "Temporal_EOY_R2",
+    "Action_RMSE", "Action_MAE", "Action_R2", "Action_EOY_RMSE",
+    "Action_EOY_R2", "AIC", "Delta_Temporal_RMSE"
   )
 ]
 
 selected_spec <- candidate_specs[[selected_model_name]]
 selected_formula <- selected_spec$formula
-final_model_train <- candidate_fits[[selected_model_name]]
-holdout_predictions <- predict_expected_gain(final_model_train, selected_spec, holdout_data)
-train_predictions <- predict_expected_gain(final_model_train, selected_spec, train_data)
-holdout_final_metrics <- evaluate_expected_gain(holdout_data, holdout_predictions)
+final_model <- candidate_fits[[selected_model_name]]
+action_predictions <- predict_expected_gain(final_model, selected_spec, action_data)
+train_predictions <- predict_expected_gain(final_model, selected_spec, train_data)
+action_final_metrics <- evaluate_expected_gain(action_data, action_predictions)
 train_final_metrics <- evaluate_expected_gain(train_data, train_predictions)
+model_bootstrap_validation <- bootstrap_model_validation(
+  action_data,
+  action_predictions,
+  reps = 300
+)
 
-final_model <- fit_candidate(selected_spec, growth)
 growth$expected_gain <- predict_expected_gain(final_model, selected_spec, growth)
 growth$expected_eoy <- growth$boy_score + growth$expected_gain
 growth$adjusted_growth_residual <- growth$score_gain - growth$expected_gain
+train_scored <- growth[growth$school_year %in% training_years, , drop = FALSE]
+action_scored <- growth[growth$school_year == action_year, , drop = FALSE]
 
-section_split <- split(growth, growth$section_year_id)
+section_split <- split(action_scored, action_scored$section_year_id)
 section_rows <- lapply(section_split, function(df) {
   n <- nrow(df)
   mean_gain <- mean(df$score_gain)
@@ -536,7 +782,7 @@ bottom_sections <- head(eligible_sections[order(eligible_sections$AdjustedGrowth
 section_highlights <- rbind(top_sections, bottom_sections)
 section_highlights <- section_highlights[!duplicated(section_highlights$SectionYear), ]
 
-teacher_split <- split(growth, growth$teacher_id)
+teacher_split <- split(action_scored, action_scored$teacher_id)
 teacher_summary <- do.call(rbind, lapply(teacher_split, function(df) {
   data.frame(
     Teacher = df$teacher_id[1],
@@ -560,7 +806,7 @@ teacher_summary <- teacher_summary[
   order(teacher_summary$AdjustedGrowthSignal, decreasing = TRUE),
 ]
 
-course_split <- split(growth, growth$course_id)
+course_split <- split(action_scored, action_scored$course_id)
 course_summary <- do.call(rbind, lapply(course_split, function(df) {
   data.frame(
     Course = df$course_id[1],
@@ -584,116 +830,127 @@ course_summary <- course_summary[
   order(course_summary$AdjustedGrowthSignal, decreasing = TRUE),
 ]
 
-teacher_support <- teacher_summary[which.min(teacher_summary$AdjustedGrowthSignal), ]
-teacher_bright <- teacher_summary[which.max(teacher_summary$AdjustedGrowthSignal), ]
-course_support <- course_summary[which.min(course_summary$AdjustedGrowthSignal), ]
-course_bright <- course_summary[which.max(course_summary$AdjustedGrowthSignal), ]
-
-priority_rows <- list(
-  data.frame(
-    Priority = "Teacher support review",
-    Target = teacher_support$Teacher,
-    Mean_adjusted_gap = format_num(teacher_support$AdjustedResidual, 2),
-    Review_signal = format_num(teacher_support$AdjustedGrowthSignal, 2),
-    Evidence = paste0(
-      teacher_support$Sections, " historical sections and ",
-      teacher_support$PairedRecords, " paired records."
-    ),
-    Recommended_follow_up = paste0(
-      "Review upcoming sections for ", teacher_support$Teacher,
-      " before the next assessment cycle; focus on pacing, attendance mix, ",
-      "starting readiness, and support routines."
-    ),
-    stringsAsFactors = FALSE
-  ),
-  data.frame(
-    Priority = "Teacher bright spot review",
-    Target = teacher_bright$Teacher,
-    Mean_adjusted_gap = format_num(teacher_bright$AdjustedResidual, 2),
-    Review_signal = paste0("+", format_num(abs(teacher_bright$AdjustedGrowthSignal), 2)),
-    Evidence = paste0(
-      teacher_bright$Sections, " historical sections and ",
-      teacher_bright$PairedRecords, " paired records."
-    ),
-    Recommended_follow_up = paste0(
-      "Identify practices from ", teacher_bright$Teacher,
-      " that may transfer to similar course and readiness contexts."
-    ),
-    stringsAsFactors = FALSE
-  ),
-  data.frame(
-    Priority = "Course support review",
-    Target = as.character(course_support$Course),
-    Mean_adjusted_gap = format_num(course_support$AdjustedResidual, 2),
-    Review_signal = format_num(course_support$AdjustedGrowthSignal, 2),
-    Evidence = paste0(
-      course_support$Sections, " historical sections and ",
-      course_support$PairedRecords, " paired records."
-    ),
-    Recommended_follow_up = paste0(
-      "Review curriculum sequence, assessment alignment, and prerequisite ",
-      "readiness for ", course_support$Course, "."
-    ),
-    stringsAsFactors = FALSE
-  ),
-  data.frame(
-    Priority = "Course bright spot review",
-    Target = as.character(course_bright$Course),
-    Mean_adjusted_gap = paste0("+", format_num(abs(course_bright$AdjustedResidual), 2)),
-    Review_signal = paste0("+", format_num(abs(course_bright$AdjustedGrowthSignal), 2)),
-    Evidence = paste0(
-      course_bright$Sections, " historical sections and ",
-      course_bright$PairedRecords, " paired records."
-    ),
-    Recommended_follow_up = paste0(
-      "Use ", course_bright$Course,
-      " as a reference pattern when reviewing similar course pathways."
-    ),
-    stringsAsFactors = FALSE
-  )
+latest_teacher_review <- make_latest_review(
+  action_scored,
+  group_vars = c("teacher_id"),
+  level = "Teacher",
+  min_n = 20
 )
-future_priorities <- do.call(rbind, priority_rows)
+latest_course_review <- make_latest_review(
+  action_scored,
+  group_vars = c("course_id"),
+  level = "Course",
+  min_n = 20
+)
+latest_section_review <- make_latest_review(
+  action_scored,
+  group_vars = c("section_id", "teacher_id", "course_id"),
+  level = "Section",
+  min_n = 5
+)
 
-section_evidence_for_priority <- function(priority, target, target_type, direction, n = 2) {
-  if (target_type == "teacher") {
-    rows <- eligible_sections[eligible_sections$Teacher == target, , drop = FALSE]
-  } else {
-    rows <- eligible_sections[eligible_sections$Course == target, , drop = FALSE]
-  }
-  if (nrow(rows) == 0) {
-    return(data.frame())
-  }
-  rows <- rows[order(rows$AdjustedGrowthSignal, decreasing = direction == "high"), ]
-  rows <- head(rows, n)
-  data.frame(
-    Priority = priority,
-    Target = target,
-    Section = rows$Section,
-    Teacher = rows$Teacher,
-    Course = rows$Course,
-    Year = rows$SchoolYear,
-    N = rows$N,
-    Raw_gain = format_num(rows$MeanGain, 2),
-    Expected_gain = format_num(rows$ExpectedGain, 2),
-    Adjusted_signal = format_num(rows$AdjustedGrowthSignal, 2),
-    stringsAsFactors = FALSE
+latest_teacher_review$DisplayTarget <- latest_teacher_review$teacher_id
+latest_teacher_review$section_id <- ""
+latest_teacher_review$course_id <- ""
+latest_course_review$DisplayTarget <- latest_course_review$course_id
+latest_course_review$section_id <- ""
+latest_course_review$teacher_id <- ""
+latest_section_review$DisplayTarget <- paste(
+  latest_section_review$section_id,
+  latest_section_review$course_id,
+  latest_section_review$teacher_id,
+  sep = " / "
+)
+
+target_cols <- c(
+  "Level", "DisplayTarget", "section_id", "teacher_id", "course_id", "N",
+  "RawGain", "ExpectedGain", "AdjustedGap", "ReliabilityWeight",
+  "ReviewSignal", "CI_Lower", "CI_Upper", "P_Value", "Q_Value", "Decision"
+)
+review_targets <- rbind(
+  latest_teacher_review[
+    latest_teacher_review$Decision != "In range" &
+      latest_teacher_review$Decision != "Insufficient sample",
+    target_cols
+  ],
+  latest_course_review[
+    latest_course_review$Decision != "In range" &
+      latest_course_review$Decision != "Insufficient sample",
+    target_cols
+  ],
+  latest_section_review[
+    latest_section_review$Decision != "In range" &
+      latest_section_review$Decision != "Insufficient sample",
+    target_cols
+  ]
+)
+if (nrow(review_targets) == 0) {
+  review_targets <- rbind(
+    head(latest_section_review[order(latest_section_review$ReviewSignal), target_cols], 3),
+    head(latest_section_review[order(latest_section_review$ReviewSignal, decreasing = TRUE), target_cols], 3)
   )
 }
+decision_order <- c(
+  "Intervention target" = 1,
+  "Positive anomaly" = 2,
+  "Watch list" = 3,
+  "Insufficient sample" = 4,
+  "In range" = 5
+)
+review_targets$DecisionOrder <- decision_order[review_targets$Decision]
+review_targets$DecisionOrder[is.na(review_targets$DecisionOrder)] <- 9
+intervention_targets <- review_targets[
+  order(review_targets$DecisionOrder, review_targets$ReviewSignal),
+]
 
-historical_section_evidence <- do.call(rbind, list(
-  section_evidence_for_priority(
-    "Teacher support review", teacher_support$Teacher, "teacher", "low"
+recommended_follow_up <- function(level, decision, target) {
+  if (decision == "Intervention target") {
+    return(paste0("Review ", tolower(level), " ", target, " for support before the next cycle."))
+  }
+  if (decision == "Positive anomaly") {
+    return(paste0("Study ", tolower(level), " ", target, " for transferable practices."))
+  }
+  paste0("Monitor ", tolower(level), " ", target, " and review context before escalation.")
+}
+
+future_priorities <- data.frame(
+  Priority = intervention_targets$Decision,
+  Target = intervention_targets$DisplayTarget,
+  Mean_adjusted_gap = format_num(intervention_targets$AdjustedGap, 2),
+  Review_signal = format_num(intervention_targets$ReviewSignal, 2),
+  Evidence = paste0(
+    intervention_targets$N,
+    " latest-year paired records; 95% CI ",
+    format_num(intervention_targets$CI_Lower, 2),
+    " to ",
+    format_num(intervention_targets$CI_Upper, 2),
+    "; q=",
+    format_p(intervention_targets$Q_Value),
+    "."
   ),
-  section_evidence_for_priority(
-    "Teacher bright spot review", teacher_bright$Teacher, "teacher", "high"
+  Recommended_follow_up = mapply(
+    recommended_follow_up,
+    intervention_targets$Level,
+    intervention_targets$Decision,
+    intervention_targets$DisplayTarget,
+    USE.NAMES = FALSE
   ),
-  section_evidence_for_priority(
-    "Course support review", course_support$Course, "course", "low"
-  ),
-  section_evidence_for_priority(
-    "Course bright spot review", course_bright$Course, "course", "high"
-  )
-))
+  stringsAsFactors = FALSE
+)
+
+historical_section_evidence <- data.frame(
+  Priority = intervention_targets$Decision,
+  Target = intervention_targets$DisplayTarget,
+  Section = ifelse("section_id" %in% names(intervention_targets), intervention_targets$section_id, ""),
+  Teacher = ifelse("teacher_id" %in% names(intervention_targets), intervention_targets$teacher_id, ""),
+  Course = ifelse("course_id" %in% names(intervention_targets), intervention_targets$course_id, ""),
+  Year = action_year,
+  N = intervention_targets$N,
+  Raw_gain = format_num(intervention_targets$RawGain, 2),
+  Expected_gain = format_num(intervention_targets$ExpectedGain, 2),
+  Adjusted_signal = format_num(intervention_targets$ReviewSignal, 2),
+  stringsAsFactors = FALSE
+)
 
 raw_rank <- eligible_sections[order(eligible_sections$MeanGain, decreasing = TRUE), "SectionYear"]
 adjusted_rank <- eligible_sections[
@@ -710,20 +967,22 @@ rank_correlation <- suppressWarnings(cor(
 
 sensitivity <- data.frame(
   Measure = c(
-    "Included paired records",
-    "Section-year groups",
-    "Groups with at least 5 paired records",
-    "Groups with at least 8 paired records",
-    "Mean raw BOY/EOY gain",
-    "Raw-vs-adjusted rank correlation",
-    "Top-10 overlap, raw vs adjusted ranking"
+    "Training paired records",
+    "Latest-year paired records",
+    "Latest-year section-year groups",
+    "Latest-year groups with at least 5 paired records",
+    "Latest-year groups with at least 8 paired records",
+    "Latest-year mean raw BOY/EOY gain",
+    "Latest-year raw-vs-adjusted rank correlation",
+    "Latest-year top-10 overlap, raw vs adjusted ranking"
   ),
   Value = c(
-    format(nrow(growth), big.mark = ","),
+    format(nrow(train_data), big.mark = ","),
+    format(nrow(action_scored), big.mark = ","),
     format(nrow(section_summary), big.mark = ","),
     format(sum(section_summary$N >= 5), big.mark = ","),
     format(sum(section_summary$N >= 8), big.mark = ","),
-    format_num(mean(growth$score_gain), 2),
+    format_num(mean(action_scored$score_gain), 2),
     format_num(rank_correlation, 3),
     format_pct(top_overlap)
   ),
@@ -732,31 +991,31 @@ sensitivity <- data.frame(
 
 diagnostics <- data.frame(
   Diagnostic = c(
-    "Holdout expected-gain RMSE",
-    "Holdout expected-gain MAE",
-    "Holdout expected-gain R-squared",
-    "Holdout EOY RMSE",
-    "Holdout EOY R-squared",
-    "Residual mean, all pairs",
-    "Residual SD, all pairs"
+    "Latest-year expected-gain RMSE",
+    "Latest-year expected-gain MAE",
+    "Latest-year expected-gain R-squared",
+    "Latest-year EOY RMSE",
+    "Latest-year EOY R-squared",
+    "Latest-year residual mean",
+    "Latest-year residual SD"
   ),
   Estimate = c(
-    format_num(holdout_final_metrics$Gain_RMSE, 3),
-    format_num(holdout_final_metrics$Gain_MAE, 3),
-    format_num(holdout_final_metrics$Gain_R2, 3),
-    format_num(holdout_final_metrics$EOY_RMSE, 3),
-    format_num(holdout_final_metrics$EOY_R2, 3),
-    format_num(mean(growth$adjusted_growth_residual), 3),
-    format_num(sd(growth$adjusted_growth_residual), 3)
+    format_num(action_final_metrics$Gain_RMSE, 3),
+    format_num(action_final_metrics$Gain_MAE, 3),
+    format_num(action_final_metrics$Gain_R2, 3),
+    format_num(action_final_metrics$EOY_RMSE, 3),
+    format_num(action_final_metrics$EOY_R2, 3),
+    format_num(mean(action_scored$adjusted_growth_residual), 3),
+    format_num(sd(action_scored$adjusted_growth_residual), 3)
   ),
   Interpretation = c(
-    "Typical holdout prediction error on BOY/EOY gain",
-    "Average absolute holdout prediction error",
-    "Share of holdout gain variation explained by the expected-growth model",
-    "Typical holdout prediction error on final EOY score",
-    "Share of holdout EOY score variation explained by the baseline",
-    "Near 0 means expected gain is centered overall",
-    "Residual spread used to judge section signal uncertainty"
+    "Typical out-of-sample prediction error on latest-year BOY/EOY gain",
+    "Average absolute out-of-sample prediction error",
+    "Share of latest-year gain variation explained by the expected-growth model",
+    "Typical out-of-sample prediction error on latest-year EOY score",
+    "Share of latest-year EOY score variation explained by the baseline",
+    "Near 0 means expected gain is centered in the action year",
+    "Latest-year residual spread used for slice uncertainty"
   ),
   stringsAsFactors = FALSE
 )
@@ -773,10 +1032,14 @@ model_comparison_display <- data.frame(
   CV_MAE = format_num(model_comparison$CV_MAE, 3),
   CV_R2 = format_num(model_comparison$CV_R2, 3),
   CV_EOY_R2 = format_num(model_comparison$CV_EOY_R2, 3),
-  Holdout_RMSE = format_num(model_comparison$Holdout_RMSE, 3),
-  Holdout_R2 = format_num(model_comparison$Holdout_R2, 3),
-  Holdout_EOY_R2 = format_num(model_comparison$Holdout_EOY_R2, 3),
-  Delta = format_num(model_comparison$Delta_CV_RMSE, 3),
+  Temporal_RMSE = format_num(model_comparison$Temporal_RMSE, 3),
+  Temporal_SD = format_num(model_comparison$Temporal_RMSE_SD, 3),
+  Temporal_R2 = format_num(model_comparison$Temporal_R2, 3),
+  Temporal_EOY_R2 = format_num(model_comparison$Temporal_EOY_R2, 3),
+  Action_RMSE = format_num(model_comparison$Action_RMSE, 3),
+  Action_R2 = format_num(model_comparison$Action_R2, 3),
+  Action_EOY_R2 = format_num(model_comparison$Action_EOY_R2, 3),
+  Delta = format_num(model_comparison$Delta_Temporal_RMSE, 3),
   stringsAsFactors = FALSE
 )
 
@@ -864,7 +1127,9 @@ final_metrics <- data.frame(
     "Selected method",
     "Selection rule",
     "Training paired records",
-    "Holdout paired records",
+    "Latest-year action paired records",
+    "Training years",
+    "Action year",
     "Candidate models tested",
     "Operational candidates tested",
     "Excluded leakage benchmarks",
@@ -874,23 +1139,28 @@ final_metrics <- data.frame(
     "CV expected-gain MAE",
     "CV expected-gain R-squared",
     "CV EOY R-squared",
-    "Holdout expected-gain RMSE",
-    "Holdout expected-gain MAE",
-    "Holdout expected-gain R-squared",
-    "Holdout EOY RMSE",
-    "Holdout EOY R-squared",
+    "Temporal expected-gain RMSE",
+    "Temporal expected-gain R-squared",
+    "Temporal EOY R-squared",
+    "Latest-year expected-gain RMSE",
+    "Latest-year expected-gain MAE",
+    "Latest-year expected-gain R-squared",
+    "Latest-year EOY RMSE",
+    "Latest-year EOY R-squared",
     "Mean BOY score",
     "Mean EOY score",
     "Mean raw BOY/EOY gain",
-    "Section-year groups"
+    "Latest-year section groups"
   ),
   Value = c(
     selected_model_name,
     selected_comparison$Target,
     selected_comparison$Method,
-    "Lowest repeated-CV expected-gain RMSE among operational candidates; teacher/course ID leakage benchmark excluded",
+    "Lowest temporal-validation expected-gain RMSE among operational candidates; ties within 1% choose simpler model",
     format(nrow(train_data), big.mark = ","),
-    format(nrow(holdout_data), big.mark = ","),
+    format(nrow(action_data), big.mark = ","),
+    paste(training_years, collapse = ", "),
+    action_year,
     length(candidate_specs),
     sum(model_comparison$Role == "Operational candidate"),
     sum(model_comparison$Role != "Operational candidate"),
@@ -900,11 +1170,14 @@ final_metrics <- data.frame(
     format_num(selected_comparison$CV_MAE, 3),
     format_num(selected_comparison$CV_R2, 3),
     format_num(selected_comparison$CV_EOY_R2, 3),
-    format_num(holdout_final_metrics$Gain_RMSE, 3),
-    format_num(holdout_final_metrics$Gain_MAE, 3),
-    format_num(holdout_final_metrics$Gain_R2, 3),
-    format_num(holdout_final_metrics$EOY_RMSE, 3),
-    format_num(holdout_final_metrics$EOY_R2, 3),
+    format_num(selected_comparison$Temporal_RMSE, 3),
+    format_num(selected_comparison$Temporal_R2, 3),
+    format_num(selected_comparison$Temporal_EOY_R2, 3),
+    format_num(action_final_metrics$Gain_RMSE, 3),
+    format_num(action_final_metrics$Gain_MAE, 3),
+    format_num(action_final_metrics$Gain_R2, 3),
+    format_num(action_final_metrics$EOY_RMSE, 3),
+    format_num(action_final_metrics$EOY_R2, 3),
     format_num(mean(growth$boy_score), 1),
     format_num(mean(growth$eoy_score), 1),
     format_num(mean(growth$score_gain), 2),
@@ -955,26 +1228,30 @@ shape_review <- do.call(rbind, lapply(seq_len(nrow(family_review_spec)), functio
       Representative_model = "Not run",
       Why_tested = family_review_spec$Why_tested[i],
       Decision = "Skipped because the optional package was not available.",
-      CV_RMSE = "",
-      Holdout_RMSE = "",
+      Temporal_RMSE = "",
+      Action_RMSE = "",
       stringsAsFactors = FALSE
     ))
   }
-  best_row <- rows[which.min(rows$CV_RMSE), , drop = FALSE]
+  if (any(rows$Selected)) {
+    best_row <- rows[rows$Selected, , drop = FALSE][1, , drop = FALSE]
+  } else {
+    best_row <- rows[which.min(rows$Temporal_RMSE), , drop = FALSE]
+  }
   decision <- if (best_row$Role == "Excluded leakage benchmark") {
     "Excluded from operating selection; persistent IDs would contaminate future review signals."
   } else if (any(rows$Selected)) {
     "Selected operating family."
   } else {
-    "Compared; not selected by repeated-CV expected-gain RMSE."
+    "Compared; not selected by temporal expected-gain RMSE."
   }
   data.frame(
     Family = family_review_spec$Family[i],
     Representative_model = best_row$Model,
     Why_tested = family_review_spec$Why_tested[i],
     Decision = decision,
-    CV_RMSE = format_num(best_row$CV_RMSE, 3),
-    Holdout_RMSE = format_num(best_row$Holdout_RMSE, 3),
+    Temporal_RMSE = format_num(best_row$Temporal_RMSE, 3),
+    Action_RMSE = format_num(best_row$Action_RMSE, 3),
     stringsAsFactors = FALSE
   )
 }))
@@ -984,6 +1261,8 @@ write.csv(model_comparison_display, file.path("reports", "growth_model_compariso
 write.csv(final_metrics, file.path("reports", "growth_final_metrics.csv"), row.names = FALSE)
 write.csv(shape_review, file.path("reports", "growth_shape_review.csv"), row.names = FALSE)
 write.csv(dependency_status, file.path("reports", "model_dependency_status.csv"), row.names = FALSE)
+write.csv(temporal_summary, file.path("reports", "model_temporal_validation.csv"), row.names = FALSE)
+write.csv(model_bootstrap_validation, file.path("reports", "model_bootstrap_validation.csv"), row.names = FALSE)
 write.csv(section_ttests_display, file.path("reports", "section_ttests.csv"), row.names = FALSE)
 write.csv(section_signals_display, file.path("reports", "section_adjusted_signals.csv"), row.names = FALSE)
 write.csv(section_highlights_display, file.path("reports", "section_signal_highlights.csv"), row.names = FALSE)
@@ -991,6 +1270,10 @@ write.csv(teacher_display, file.path("reports", "teacher_growth_summary.csv"), r
 write.csv(course_display, file.path("reports", "course_growth_summary.csv"), row.names = FALSE)
 write.csv(future_priorities, file.path("reports", "future_review_priorities.csv"), row.names = FALSE)
 write.csv(historical_section_evidence, file.path("reports", "historical_section_evidence.csv"), row.names = FALSE)
+write.csv(format_review_table(latest_teacher_review, c("teacher_id")), file.path("reports", "latest_teacher_review.csv"), row.names = FALSE)
+write.csv(format_review_table(latest_course_review, c("course_id")), file.path("reports", "latest_course_review.csv"), row.names = FALSE)
+write.csv(format_review_table(latest_section_review, c("section_id", "teacher_id", "course_id")), file.path("reports", "latest_section_review.csv"), row.names = FALSE)
+write.csv(format_review_table(intervention_targets, c("section_id", "teacher_id", "course_id")), file.path("reports", "intervention_targets.csv"), row.names = FALSE)
 write.csv(diagnostics, file.path("reports", "growth_diagnostics.csv"), row.names = FALSE)
 write.csv(sensitivity, file.path("reports", "growth_sensitivity.csv"), row.names = FALSE)
 write.csv(growth, file.path("reports", "growth_scored_pairs.csv"), row.names = FALSE)
@@ -1009,9 +1292,17 @@ saveRDS(
     course_summary = course_summary,
     future_priorities = future_priorities,
     historical_section_evidence = historical_section_evidence,
+    temporal_summary = temporal_summary,
+    model_bootstrap_validation = model_bootstrap_validation,
+    latest_teacher_review = latest_teacher_review,
+    latest_course_review = latest_course_review,
+    latest_section_review = latest_section_review,
+    intervention_targets = intervention_targets,
     growth = growth,
+    training_years = training_years,
+    action_year = action_year,
     train_rows = nrow(train_data),
-    holdout_rows = nrow(holdout_data)
+    action_rows = nrow(action_data)
   ),
   file.path("reports", "model_artifacts.rds")
 )
@@ -1196,34 +1487,34 @@ legend(
 dev.off()
 
 png(file.path("figures", "growth_model_comparison.png"), width = 1200, height = 760, res = 150)
-ordered_models <- model_comparison[order(model_comparison$CV_RMSE, decreasing = TRUE), ]
+ordered_models <- model_comparison[order(model_comparison$Temporal_RMSE, decreasing = TRUE), ]
 y_pos <- seq_len(nrow(ordered_models))
-x_min <- min(ordered_models$CV_RMSE - ordered_models$CV_RMSE_SD) - 0.05
-x_max <- max(ordered_models$CV_RMSE + ordered_models$CV_RMSE_SD) + 0.05
+x_min <- min(ordered_models$Temporal_RMSE - ordered_models$Temporal_RMSE_SD) - 0.05
+x_max <- max(ordered_models$Temporal_RMSE + ordered_models$Temporal_RMSE_SD) + 0.05
 par(mar = c(5, 15, 4, 2))
 plot(
-  ordered_models$CV_RMSE,
+  ordered_models$Temporal_RMSE,
   y_pos,
   xlim = c(x_min, x_max),
   yaxt = "n",
-  xlab = "Repeated-CV RMSE",
+  xlab = "Leave-one-year-out RMSE",
   ylab = "",
   pch = 19,
   col = ifelse(ordered_models$Selected, "#1B6CA8", "#555555"),
   main = "Expected-Growth Model Comparison"
 )
 segments(
-  ordered_models$CV_RMSE - ordered_models$CV_RMSE_SD,
+  ordered_models$Temporal_RMSE - ordered_models$Temporal_RMSE_SD,
   y_pos,
-  ordered_models$CV_RMSE + ordered_models$CV_RMSE_SD,
+  ordered_models$Temporal_RMSE + ordered_models$Temporal_RMSE_SD,
   y_pos,
   col = "#888888"
 )
 axis(2, at = y_pos, labels = ordered_models$Model, las = 1)
-abline(v = selected_comparison$CV_RMSE, lty = 2, col = "#8C2D19")
+abline(v = selected_comparison$Temporal_RMSE, lty = 2, col = "#8C2D19")
 legend(
   "bottomright",
-  legend = c("Selected model", "Other candidate", "Selected mean CV RMSE"),
+  legend = c("Selected model", "Other candidate", "Selected temporal RMSE"),
   pch = c(19, 19, NA),
   lty = c(NA, NA, 2),
   col = c("#1B6CA8", "#555555", "#8C2D19"),
@@ -1286,13 +1577,13 @@ dev.off()
 png(file.path("figures", "growth_diagnostics.png"), width = 1200, height = 620, res = 150)
 par(mfrow = c(1, 2), mar = c(5, 5, 4, 2))
 plot(
-  holdout_predictions,
-  holdout_data$score_gain,
+  action_predictions,
+  action_data$score_gain,
   pch = 19,
   col = "#1B6CA880",
   xlab = "Predicted BOY/EOY gain",
   ylab = "Observed BOY/EOY gain",
-  main = "Holdout Predictions"
+  main = "Latest-Year Predictions"
 )
 abline(0, 1, col = "#8C2D19", lwd = 2)
 grid(col = "#E0E0E0")

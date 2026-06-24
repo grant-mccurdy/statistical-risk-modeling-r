@@ -2,15 +2,16 @@
 
 ## Analytical Question
 
-Which future teacher and course review priorities are supported by seven years
-of public-safe BOY/EOY assessment history after accounting for starting
+Which teacher, course, and section patterns in the latest completed assessment
+year deserve review before the next cycle after accounting for starting
 performance, readiness, attendance, course track, grade level, and school-year
 context?
 
-Historical section-year groups are treated as evidence. Future action targets
-are recurring teacher and course patterns, not old sections that no longer
-exist. The outputs are not automated teacher evaluation, compensation,
-discipline, or personnel decisions.
+The workflow is future-facing. Prior years train and select the expected-growth
+baseline. The latest completed year is then scored against that prior-year
+baseline to identify review targets. Section rows are evidence about the most
+recent operating context; the outputs are not automated teacher evaluation,
+compensation, discipline, or personnel decisions.
 
 ## Public-Safe BOY/EOY Extract
 
@@ -62,12 +63,21 @@ Candidate expected-growth models include:
 - A teacher/course ID leakage benchmark that is excluded from operating
   selection
 
-Model comparison uses repeated 5-fold cross-validation with RMSE as the primary
-criterion and MAE/R-squared as secondary metrics. The selected model is the
-operational candidate with the lowest repeated-CV expected-gain RMSE. Teacher
-IDs, course IDs, and section IDs are excluded from the operating baseline
-because including them would absorb the recurring patterns the review layer is
-designed to surface.
+The model-selection process uses three validation views:
+
+- Repeated 5-fold cross-validation on the training years to check sample
+  stability.
+- Leave-one-year-out temporal validation across the training years to test
+  year-to-year generalization.
+- Latest-year action evaluation after the baseline is selected, used to assess
+  the year being reviewed but not to choose the model.
+
+Temporal expected-gain RMSE is the primary selection criterion. If operational
+candidates are within one percent of the best temporal RMSE, the simpler
+baseline is selected because the difference is not large enough to justify a
+more complex operating model. Teacher IDs, course IDs, and section IDs are
+excluded from the operating baseline because including them would absorb the
+patterns the review layer is designed to surface.
 
 The report separates two validation views:
 
@@ -80,22 +90,35 @@ The EOY R-squared is expected to be higher because BOY score explains much of
 final EOY score. Gain R-squared is lower because individual improvement remains
 noisy after starting score is removed.
 
-## Section Signals
+## Latest-Year Decision Signals
 
-Section-year adjusted signals are calculated from average residuals and then
-weighted toward zero for smaller groups. This reliability weighting prevents
-small sections from dominating the ranking.
+After model selection, the chosen baseline is fit on the prior years and scored
+on the latest completed year. Teacher, course, and section signals are
+calculated from the latest-year residuals:
+
+```text
+review gap = observed gain - expected gain
+```
+
+Each slice receives a bootstrap confidence interval, p-value, BH-adjusted
+q-value, and reliability weight. Reliability weighting prevents small groups
+from dominating the ranking.
 
 Signal categories are:
 
-- Above expected
-- Within expected range
-- Below expected
-- Small group
+- Intervention target
+- Positive anomaly
+- Watch list
+- In range
+- Insufficient sample
+
+The decision labels are audit priorities. They identify where stakeholders
+should review context, support needs, pacing, curriculum alignment, or
+transferable practices before the next cycle. They are not causal claims.
 
 ## Teacher and Course Review Signals
 
-Teacher and course summaries aggregate historical section evidence into
+Teacher and course summaries aggregate latest-year section evidence into
 future-facing review signals. The stakeholder-facing gap is the average
 observed-minus-expected gain. The ranking signal applies reliability shrinkage
 so smaller groups are pulled toward zero.
@@ -107,7 +130,9 @@ The diagnostic layer includes:
 - Raw BOY/EOY gain distribution
 - Nonparametric BOY-score shape checks
 - Candidate model comparison
-- Holdout prediction diagnostics
+- Temporal-validation diagnostics
+- Latest-year prediction diagnostics
+- Bootstrap performance intervals
 - Residual checks
 - Raw-vs-adjusted rank correlation
 - Top-section overlap between raw and adjusted rankings

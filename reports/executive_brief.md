@@ -1,18 +1,18 @@
 # Executive Brief: Assessment Growth and Section Performance
 
-**Purpose:** use seven years of public-safe BOY/EOY assessment history to identify teacher and course patterns that deserve review before the next assessment cycle.
+**Purpose:** use prior-year BOY/EOY assessment history to build an expected-growth baseline, then review the latest completed year for teacher, course, and section patterns that deserve action before the next cycle.
 
-**Headline metric:** average raw BOY/EOY gain is 5.72 points across 1,737 paired records.
+**Action year:** 2031-2032; latest-year paired records: 252; latest-year raw gain: 5.34 points.
 
-**Baseline:** selected model is EOY readiness model with holdout EOY R-squared 0.947 and holdout expected-gain RMSE 4.400.
+**Baseline:** EOY linear benchmark selected from 13 candidates. Temporal expected-gain RMSE is 4.684; latest-year EOY R-squared is 0.932.
 
-**Future priorities:** review TCH-001 for support, study TCH-005 as a bright spot, review Alg 1 for course support, and use Precalc as a course reference pattern.
+**Decision logic:** observed gain minus expected gain, reviewed by teacher, course, and section with bootstrap intervals and BH-adjusted q-values.
 
-**Guardrail:** historical sections explain the signal, but future action should focus on upcoming teacher/course planning. Do not use the outputs for automatic teacher evaluation, compensation, discipline, or personnel decisions.
+| Decision | Slice | Target | N | Gap | 95% CI | q |
+| --- | --- | --- | --- | --- | --- | --- |
+| Intervention | Section | S21 | 12 | -2.91 | -5.35 to -0.55 | 0.200 |
+| Intervention | Section | S19 | 12 | -2.87 | -5.33 to -0.13 | 0.200 |
+| Intervention | Teacher | TCH-005 | 68 | -1.24 | -2.42 to -0.20 | 0.167 |
+| Bright spot | Section | S13 | 9 | +2.71 | 0.63 to 4.71 | 0.040 |
 
-## Decisions for Stakeholders
-
-- Decide which teacher/course review conversations should happen before the next cycle.
-- Compare raw gains with adjusted gains before drawing conclusions.
-- Use historical section evidence as context, not as the future recommendation itself.
-- Monitor pairing rates, section sizes, and course mix before operationalizing the workflow.
+**Guardrail:** the outputs are review priorities, not automatic teacher evaluation, compensation, discipline, or personnel decisions.

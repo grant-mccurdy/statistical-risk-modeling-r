@@ -1,11 +1,11 @@
 # Assessment Growth and Section Performance Analytics in R
 
 Public-safe education analytics project in R that evaluates beginning-of-year
-to end-of-year assessment improvement and converts seven years of historical
-section evidence into future-facing teacher and course review priorities. The
-report answers a stakeholder question first: which teachers and courses should
-receive closer review before the next assessment cycle after accounting for
-starting performance, readiness, attendance, course track, grade level, and
+to end-of-year assessment improvement and turns assessment history into a
+future-facing statistical decision system. The report answers a stakeholder
+question first: which teacher, course, and section patterns in the latest
+completed year deserve review before the next assessment cycle after accounting
+for starting performance, readiness, attendance, course track, grade level, and
 school-year context?
 
 The extract uses simulated identifiers and generalized readiness behavior from
@@ -25,22 +25,23 @@ Open the knitted PDF report first:
 [reports/assessment_growth_section_performance_report.pdf](reports/assessment_growth_section_performance_report.pdf)
 
 This is the primary reviewer artifact. It uses a formal statistics-report
-structure: recommendation and direct answers first, data audit next, then raw
-section evidence, expected-growth modeling, teacher/course review signals,
-diagnostics, and public-safety notes.
+structure: recommendation and direct answers first, data audit next, then model
+selection, latest-year review targets, section evidence, diagnostics, and
+public-safety notes.
 
 ![Sections above or below expected growth](figures/section_adjusted_signals.png)
 
 ## Stakeholder Preview
 
-- **Purpose:** identify public-safe teacher and course patterns that deserve
-  future review based on historical BOY/EOY improvement.
+- **Purpose:** train an expected-growth baseline on prior years, then use the
+  latest completed year to flag teacher, course, and section patterns for
+  future review.
 - **Headline metric:** average raw BOY/EOY gain is 5.72 points across 1,737
   paired records.
 - **Analytic layer:** compare observed gain with expected gain after controlling
   for starting score/readiness, attendance, course track, grade level, and
   school-year context.
-- **Guardrail:** use teacher/course signals for instructional review and
+- **Guardrail:** use teacher/course/section signals for instructional review and
   follow-up, not automated teacher evaluation or personnel decisions.
 
 ## Technical Skills Demonstrated
@@ -51,9 +52,10 @@ diagnostics, and public-safety notes.
 - Adjusted expected-growth modeling in R
 - Candidate-family comparison across direct-gain, predicted-EOY, interaction,
   GAM, random-forest, gradient-boosting, and leakage-check specifications
-- Repeated cross-validation using RMSE and MAE
-- Holdout validation and residual diagnostics
-- Reliability-weighted historical section signals
+- Repeated cross-validation plus leave-one-year-out temporal validation
+- Latest-year action evaluation, bootstrap intervals, and residual diagnostics
+- Reliability-weighted teacher/course/section decision flags
+- BH-adjusted q-values for multiple-review control
 - Teacher/course review-priority views for instructional planning
 - Sensitivity checks comparing raw and adjusted section rankings
 - Executive-facing communication with public-safety guardrails
@@ -91,7 +93,7 @@ Rscript --vanilla R/validate_public_safety.R
 ```
 
 Optional PDF rendering is available when `rmarkdown`, Pandoc, and a LaTeX
-engine such as `xelatex` are installed:
+engine such as `pdflatex` are installed:
 
 ```bash
 make report-pdf
@@ -144,8 +146,13 @@ The generated evidence packet includes:
 - `reports/growth_model_comparison.csv`
 - `reports/growth_model_comparison_display.csv`
 - `reports/growth_final_metrics.csv`
+- `reports/intervention_targets.csv`
+- `reports/latest_teacher_review.csv`
+- `reports/latest_course_review.csv`
+- `reports/latest_section_review.csv`
 - `reports/future_review_priorities.csv`
-- `reports/historical_section_evidence.csv`
+- `reports/model_temporal_validation.csv`
+- `reports/model_bootstrap_validation.csv`
 - `reports/model_dependency_status.csv`
 - `reports/section_ttests.csv`
 - `reports/section_adjusted_signals.csv`

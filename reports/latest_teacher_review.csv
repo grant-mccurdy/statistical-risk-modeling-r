@@ -1,0 +1,6 @@
+"teacher_id","Level","Target","N","Raw_gain","Expected_gain","Adjusted_gap","CI_95","P_value","Q_value","Decision"
+"TCH-005","Teacher","TCH-005",68,"3.81","5.05","-1.24","-2.42 to -0.20","0.033","0.167","Intervention target"
+"TCH-003","Teacher","TCH-003",56,"5.70","5.70","0.01","-1.25 to 1.13","0.973","0.973","In range"
+"TCH-001","Teacher","TCH-001",33,"6.06","6.02","0.04","-1.42 to 1.44","0.880","0.973","In range"
+"TCH-002","Teacher","TCH-002",52,"6.60","6.56","0.04","-1.37 to 1.37","0.920","0.973","In range"
+"TCH-004","Teacher","TCH-004",43,"5.21","4.85","0.36","-1.07 to 1.77","0.553","0.973","In range"
