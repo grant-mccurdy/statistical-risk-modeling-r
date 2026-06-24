@@ -15,8 +15,23 @@ The selected expected-growth model is **Readiness-augmented**. It achieved holdo
 1. The main metric is BOY/EOY score improvement: end-of-year score minus beginning-of-year score for the same simulated student in the same section and teacher context.
 2. The average raw gain is 5.72 points across 1,737 paired records.
 3. Raw section gains are reported, but the primary comparison is adjusted growth: observed section gain minus expected gain from the selected model.
-4. The section review layer flags 8 section-year groups above expected growth and 5 below expected growth, with 156 within expected range.
-5. The teacher and course summaries are aggregation views for leadership conversations. They are not personnel ratings because the data is public-safe, simulated, and section composition still matters.
+4. The section review layer flags 8 section-year groups above expected growth and 5 below expected growth, with 156 within expected range. Start with the audit queue below rather than a raw ranking.
+5. Course and teacher summaries are pattern-finding views. Alg 1 is the clearest course support review; Precalc is the clearest course bright spot; TCH-001 merits a composition-aware support review.
+
+<!-- PDF_PAGE_BREAK -->
+
+**Initial audit queue**
+
+| Level | Target | Reason |
+| --- | --- | --- |
+| Section support | 30-31 S09 / TCH-002 / Alg 2 | Raw 2.33 vs expected 6.65; signal -2.05. |
+| Section support | 27-28 S08 / TCH-002 / Alg 2 | Raw 4.04 vs expected 6.69; signal -1.50. |
+| Section support | 26-27 S03 / TCH-001 / Geometry | Raw 3.27 vs expected 6.45; signal -1.50. |
+| Section bright spot | 30-31 S06 / TCH-002 / Alg 2 | Raw 10.39 vs expected 6.39; signal +1.89. |
+| Section bright spot | 30-31 S19 / TCH-005 / AP Calc AB | Raw 9.09 vs expected 6.13; signal +1.61. |
+| Course support | Alg 1 | Course signal -0.34; raw 6.60 vs expected 6.94. |
+| Course bright spot | Precalc | Course signal +0.10; raw 5.73 vs expected 5.63. |
+| Teacher support | TCH-001 | Average signal -0.17 across 23 sections; review with composition context. |
 
 ## Data Audit
 
@@ -41,7 +56,7 @@ The extract uses simulated identifiers and generalized score/readiness behavior 
 
 The first layer is descriptive: calculate the BOY/EOY score gain inside each section-year group and run a paired-improvement t-test against zero. This answers whether a section improved, but it does not by itself prove that the section improved more than expected given its starting point.
 
-The table below shows high-signal section-year groups from the review layer, with their raw BOY/EOY t-test results included for context. The full section t-test table is generated as `reports/section_ttests.csv`.
+The table below shows high-signal section-year groups from the review layer, with their raw BOY/EOY t-test results included for context. The full section t-test table is generated as [reports/section_ttests.csv](section_ttests.csv).
 
 | Section | N | BOY | EOY | Gain | 95% CI | p-value |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -84,7 +99,7 @@ The adjusted model estimates expected BOY/EOY gain from starting score/readiness
 | Spline BOY score benchmark |  | 4.745 | 4.422 | 0.172 |
 | Context baseline |  | 5.078 | 4.802 | 0.024 |
 
-The full model-comparison table is generated as `reports/growth_model_comparison_display.csv`.
+The full model-comparison table is generated as [reports/growth_model_comparison_display.csv](growth_model_comparison_display.csv).
 
 ![Expected-growth model comparison](../figures/growth_model_comparison.png)
 
@@ -113,7 +128,7 @@ For each section-year group, the adjusted signal is the reliability-weighted ave
 
 ![Sections above or below expected growth](../figures/section_adjusted_signals.png)
 
-The full section signal table is generated as `reports/section_adjusted_signals.csv` so reviewers can inspect all section-year groups, not only the highlights shown in the report.
+The full section signal table is generated as [reports/section_adjusted_signals.csv](section_adjusted_signals.csv) so reviewers can inspect all section-year groups, not only the highlights shown in the report.
 
 ## Instructor and Course Summary
 

@@ -11,6 +11,8 @@ output:
     md_extensions: -implicit_figures
 fontsize: 11pt
 geometry: margin=0.85in
+colorlinks: true
+urlcolor: blue
 header-includes:
   - \usepackage{booktabs}
   - \usepackage{graphicx}

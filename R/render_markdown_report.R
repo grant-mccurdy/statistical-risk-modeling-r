@@ -57,6 +57,19 @@ profile_value <- function(measure_name) {
   profile$Value[profile$Measure == measure_name][1]
 }
 
+as_report_num <- function(x) {
+  suppressWarnings(as.numeric(gsub(",", "", x)))
+}
+
+signed_num <- function(x) {
+  x <- as_report_num(x)
+  ifelse(x > 0, paste0("+", format_num(x, 2)), format_num(x, 2))
+}
+
+artifact_ref <- function(path) {
+  paste0("[", path, "](", basename(path), ")")
+}
+
 selected_model <- metric_value("Selected model")
 included_pairs <- profile_value("Included paired records")
 section_groups <- profile_value("Unique section-year groups")
@@ -132,6 +145,20 @@ pretty_course <- function(course) {
   ifelse(key %in% names(labels), labels[key], gsub("-", " ", key))
 }
 
+audit_target <- function(section, teacher = NULL, course = NULL, year = NULL) {
+  pieces <- c()
+  if (!is.null(section) && !is.null(year)) {
+    pieces <- c(pieces, short_section_label(section, year))
+  }
+  if (!is.null(teacher)) {
+    pieces <- c(pieces, teacher)
+  }
+  if (!is.null(course)) {
+    pieces <- c(pieces, pretty_course(course))
+  }
+  paste(pieces, collapse = " / ")
+}
+
 raw_improvement_report <- top_n(section_ttests, 8)
 raw_improvement_report$Section <- short_section_label(
   raw_improvement_report$Section,
@@ -182,6 +209,91 @@ course_summary_report <- course_summary_report[
 ]
 names(course_summary_report) <- c("Course", "Sections", "Records", "Raw", "Expected", "Signal")
 
+section_signals_numeric <- section_signals
+section_signals_numeric$SignalValue <- as_report_num(section_signals_numeric$`Adjusted signal`)
+support_sections <- section_signals_numeric[
+  section_signals_numeric$Category == "Below expected",
+  ,
+  drop = FALSE
+]
+support_sections <- head(support_sections[order(support_sections$SignalValue), , drop = FALSE], 3)
+bright_sections <- section_signals_numeric[
+  section_signals_numeric$Category == "Above expected",
+  ,
+  drop = FALSE
+]
+bright_sections <- head(
+  bright_sections[order(bright_sections$SignalValue, decreasing = TRUE), , drop = FALSE],
+  2
+)
+
+make_section_audit_rows <- function(df, focus) {
+  if (nrow(df) == 0) {
+    return(data.frame(Level = character(), Target = character(), Reason = character()))
+  }
+  data.frame(
+    Level = paste("Section", focus),
+    Target = mapply(
+      audit_target,
+      df$Section,
+      df$Teacher,
+      df$Course,
+      df$Year,
+      USE.NAMES = FALSE
+    ),
+    Reason = paste0(
+      "Raw ", df$`Raw gain`,
+      " vs expected ", df$`Expected gain`,
+      "; signal ", signed_num(df$`Adjusted signal`), "."
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+course_numeric <- course_summary
+course_numeric$SignalValue <- as_report_num(course_numeric$`Adjusted signal`)
+course_low <- course_numeric[which.min(course_numeric$SignalValue), , drop = FALSE]
+course_high <- course_numeric[which.max(course_numeric$SignalValue), , drop = FALSE]
+
+teacher_numeric <- teacher_summary
+teacher_numeric$SignalValue <- as_report_num(teacher_numeric$`Adjusted signal`)
+teacher_low <- teacher_numeric[which.min(teacher_numeric$SignalValue), , drop = FALSE]
+
+audit_queue_report <- rbind(
+  make_section_audit_rows(support_sections, "support"),
+  make_section_audit_rows(bright_sections, "bright spot"),
+  data.frame(
+    Level = "Course support",
+    Target = pretty_course(course_low$Course),
+    Reason = paste0(
+      "Course signal ", signed_num(course_low$`Adjusted signal`),
+      "; raw ", course_low$`Raw gain`,
+      " vs expected ", course_low$`Expected gain`, "."
+    ),
+    stringsAsFactors = FALSE
+  ),
+  data.frame(
+    Level = "Course bright spot",
+    Target = pretty_course(course_high$Course),
+    Reason = paste0(
+      "Course signal ", signed_num(course_high$`Adjusted signal`),
+      "; raw ", course_high$`Raw gain`,
+      " vs expected ", course_high$`Expected gain`, "."
+    ),
+    stringsAsFactors = FALSE
+  ),
+  data.frame(
+    Level = "Teacher support",
+    Target = teacher_low$Teacher,
+    Reason = paste0(
+      "Average signal ", signed_num(teacher_low$`Adjusted signal`),
+      " across ", teacher_low$Sections,
+      " sections; review with composition context."
+    ),
+    stringsAsFactors = FALSE
+  )
+)
+
 report_lines <- c(
   "# Assessment Growth and Section Performance Analytics in R",
   "",
@@ -217,8 +329,19 @@ report_lines <- c(
   "1. The main metric is BOY/EOY score improvement: end-of-year score minus beginning-of-year score for the same simulated student in the same section and teacher context.",
   paste0("2. The average raw gain is ", mean_gain, " points across ", included_pairs, " paired records."),
   paste0("3. Raw section gains are reported, but the primary comparison is adjusted growth: observed section gain minus expected gain from the selected model."),
-  paste0("4. The section review layer flags ", above_expected, " section-year groups above expected growth and ", below_expected, " below expected growth, with ", within_expected, " within expected range."),
-  "5. The teacher and course summaries are aggregation views for leadership conversations. They are not personnel ratings because the data is public-safe, simulated, and section composition still matters.",
+  paste0("4. The section review layer flags ", above_expected, " section-year groups above expected growth and ", below_expected, " below expected growth, with ", within_expected, " within expected range. Start with the audit queue below rather than a raw ranking."),
+  paste0(
+    "5. Course and teacher summaries are pattern-finding views. ",
+    pretty_course(course_low$Course), " is the clearest course support review; ",
+    pretty_course(course_high$Course), " is the clearest course bright spot; ",
+    teacher_low$Teacher, " merits a composition-aware support review."
+  ),
+  "",
+  "<!-- PDF_PAGE_BREAK -->",
+  "",
+  "**Initial audit queue**",
+  "",
+  markdown_table(audit_queue_report),
   "",
   "## Data Audit",
   "",
@@ -232,7 +355,10 @@ report_lines <- c(
   "",
   "The first layer is descriptive: calculate the BOY/EOY score gain inside each section-year group and run a paired-improvement t-test against zero. This answers whether a section improved, but it does not by itself prove that the section improved more than expected given its starting point.",
   "",
-  "The table below shows high-signal section-year groups from the review layer, with their raw BOY/EOY t-test results included for context. The full section t-test table is generated as `reports/section_ttests.csv`.",
+  paste0(
+    "The table below shows high-signal section-year groups from the review layer, with their raw BOY/EOY t-test results included for context. The full section t-test table is generated as ",
+    artifact_ref("reports/section_ttests.csv"), "."
+  ),
   "",
   markdown_table(raw_improvement_report),
   "",
@@ -252,7 +378,10 @@ report_lines <- c(
   "",
   markdown_table(model_comparison_report),
   "",
-  "The full model-comparison table is generated as `reports/growth_model_comparison_display.csv`.",
+  paste0(
+    "The full model-comparison table is generated as ",
+    artifact_ref("reports/growth_model_comparison_display.csv"), "."
+  ),
   "",
   "![Expected-growth model comparison](../figures/growth_model_comparison.png)",
   "",
@@ -264,7 +393,11 @@ report_lines <- c(
   "",
   "![Sections above or below expected growth](../figures/section_adjusted_signals.png)",
   "",
-  "The full section signal table is generated as `reports/section_adjusted_signals.csv` so reviewers can inspect all section-year groups, not only the highlights shown in the report.",
+  paste0(
+    "The full section signal table is generated as ",
+    artifact_ref("reports/section_adjusted_signals.csv"),
+    " so reviewers can inspect all section-year groups, not only the highlights shown in the report."
+  ),
   "",
   "## Instructor and Course Summary",
   "",

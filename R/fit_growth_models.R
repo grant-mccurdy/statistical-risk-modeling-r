@@ -586,15 +586,50 @@ hist(
   main = "BOY/EOY Gain Distribution"
 )
 abline(v = mean(growth$score_gain), col = "#8C2D19", lwd = 2)
-boxplot(
-  score_gain ~ course_track,
-  data = growth,
-  col = "#D9E6EF",
-  xlab = "Course track",
-  ylab = "BOY/EOY score gain",
-  main = "Improvement by Course Track"
+
+track_split <- split(growth$score_gain, growth$course_track)
+track_summary <- data.frame(
+  Track = names(track_split),
+  N = vapply(track_split, length, integer(1)),
+  Mean = vapply(track_split, mean, numeric(1)),
+  SD = vapply(track_split, sd, numeric(1)),
+  stringsAsFactors = FALSE
 )
-abline(h = 0, lty = 2, col = "#666666")
+track_summary$SE <- track_summary$SD / sqrt(track_summary$N)
+track_summary$Lower <- track_summary$Mean - 1.96 * track_summary$SE
+track_summary$Upper <- track_summary$Mean + 1.96 * track_summary$SE
+track_summary$Label <- c(
+  "ap" = "AP",
+  "beyond_core" = "Beyond core",
+  "honors" = "Honors",
+  "regular" = "Regular"
+)[track_summary$Track]
+track_summary <- track_summary[order(track_summary$Mean), ]
+track_summary$AxisLabel <- paste0(track_summary$Label, " (n=", track_summary$N, ")")
+y_pos <- seq_len(nrow(track_summary))
+par(mar = c(5, 10, 4, 2))
+plot(
+  track_summary$Mean,
+  y_pos,
+  xlim = c(
+    min(0, track_summary$Lower) - 0.5,
+    max(track_summary$Upper) + 0.7
+  ),
+  ylim = range(y_pos) + c(-0.5, 0.5),
+  yaxt = "n",
+  pch = 19,
+  cex = 1.2,
+  col = "#1B6CA8",
+  xlab = "Mean BOY/EOY score gain",
+  ylab = "",
+  main = "Average Gain by Track"
+)
+segments(track_summary$Lower, y_pos, track_summary$Upper, y_pos, col = "#555555", lwd = 2)
+points(track_summary$Mean, y_pos, pch = 19, cex = 1.2, col = "#1B6CA8")
+axis(2, at = y_pos, labels = track_summary$AxisLabel, las = 1)
+abline(v = 0, lty = 2, col = "#888888")
+abline(v = mean(growth$score_gain), lty = 3, col = "#8C2D19", lwd = 1.5)
+mtext("Points show means; bars show 95% CIs", side = 3, line = 0.3, cex = 0.8)
 dev.off()
 
 png(file.path("figures", "baseline_growth_shape.png"), width = 1300, height = 700, res = 150)
