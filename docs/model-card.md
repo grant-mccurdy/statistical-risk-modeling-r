@@ -2,7 +2,7 @@
 
 ## Intended Use
 
-Estimate an expected BOY/EOY assessment-growth baseline and identify public-safe teacher, course, and section patterns that deserve future instructional review.
+Estimate an expected BOY/EOY assessment-growth baseline from prior completed years and identify latest-year teacher, course, and section patterns that deserve future instructional review.
 
 ## Not Intended For
 
@@ -14,7 +14,7 @@ Public-safe paired BOY/EOY assessment records with 1,737 modeled pairs. The acti
 
 ## Model
 
-Selected baseline: Growth lasso. The operating target is direct BOY/EOY score gain. Candidate families include a naive mean-growth benchmark, linear baselines, lagged-history and section-composition parametric models, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regularized regression, regression trees, random forests, gradient boosting, hand-weighted ensembles, stacked ensembles, EOY-derived benchmarks, and an excluded teacher/course ID leakage check.
+Selected baseline: Growth lasso. The operating target is direct BOY/EOY score gain. Candidate families include a naive mean-growth benchmark, linear baselines, lagged-history and section-composition parametric models, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regularized regression, regression trees, random forests, gradient boosting, hand-weighted ensembles, stacked ensembles, EOY-derived benchmarks, and an excluded teacher/course ID benchmark.
 
 ## Validation
 
@@ -49,7 +49,7 @@ Selected baseline: Growth lasso. The operating target is direct BOY/EOY score ga
 | Action year | 2024-2025 |
 | Candidate models tested | 31 |
 | Operational candidates tested | 26 |
-| Excluded leakage benchmarks | 5 |
+| Excluded ID benchmarks | 5 |
 | Repeated CV folds | 5 |
 | Repeated CV repeats | 2 |
 | Temporal expected-gain RMSE | 4.663 |
@@ -72,7 +72,7 @@ Selected baseline: Growth lasso. The operating target is direct BOY/EOY score ga
 
 ## Decision Layer
 
-Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, mixed-effects shrinkage review, and decision labels. The labels are audit priorities, not causal claims.
+Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, mixed-effects shrinkage review, and decision labels. The labels are review priorities for planning and follow-up.
 
 ## Monitoring Recommendations
 

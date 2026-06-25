@@ -2,25 +2,25 @@
 
 ## Recommendation
 
-Use the latest completed assessment year, **2024-2025**, to identify teacher, course, and section patterns that deserve review before the next cycle. The stakeholder metric is **BOY/EOY score gain**: end-of-year score minus beginning-of-year score for the same public-safe student record.
+Use prior completed assessment years to build and validate an expected-growth baseline, then apply that baseline to the latest completed year, **2024-2025**, to identify teacher, course, and section patterns that may deserve review before the next cycle. The stakeholder metric is **BOY/EOY score gain**: end-of-year score minus beginning-of-year score for the same student record.
 
-The decision system does not ask whether old sections should be managed retroactively. It asks whether the most recent actual growth was materially above or below an expected-growth baseline trained only on prior years.
+Historical years establish expected growth. The latest completed year is scored against that expectation to produce current review priorities.
 
 ## How To Read The Model Results
 
-The model is **not** intended to forecast each student's exact score gain. Individual growth is noisy because similar students can improve by different amounts for reasons not fully captured in the extract. For that reason, the latest-year individual gain R-squared of **0.097** is treated as a signal-strength diagnostic, not the headline business result.
+The model is designed for **group-level review**, not individual student forecasting. Individual growth varies because similar students can improve by different amounts for reasons not fully captured in the extract. For that reason, the latest-year individual gain R-squared of **0.097** is a supporting model-quality measure, not the primary decision measure.
 
-The business question is group-level: after adjusting for starting score, readiness, attendance, prior history, course track, grade level, and section composition, did a teacher, course, or section produce more or less average growth than expected? That comparison is more stable because student-level noise partly averages out across groups.
+The decision question is group-level: after adjusting for starting score, readiness, attendance, prior history, course track, grade level, and section composition, did a teacher, course, or section produce more or less average growth than expected? That comparison is more stable because student-level noise partly averages out across groups.
 
-The EOY R-squared of **0.932** is reported only to show that final score is mechanically easier to predict from BOY score. It should not be read as evidence that the model precisely predicts improvement. The relevant evidence is out-of-sample lift versus a naive baseline, aggregate fit, residual calibration, uncertainty intervals, and flag stability.
+The EOY R-squared of **0.932** is reported only to show that final score is more directly related to BOY score. It should not be read as evidence that the model precisely predicts improvement. The relevant evidence is out-of-sample lift versus a naive baseline, aggregate fit, residual calibration, uncertainty intervals, and flag stability.
 
 The baseline selected for operations is **Growth lasso**. It predicts **score gain directly** using a Regularized regression specification. The selected tuning choice is alpha=1.00. Against a naive prior-year mean-growth baseline, the selected model improves temporal RMSE by **8.0%** and latest-year RMSE by **5.4%**.
 
-Under the stricter validity framework, this model is best described as **directional review** evidence: 4 of 7 primary gates passed. The model is useful for structured review and prioritization, but the report should not overstate it as a definitive teacher or section rating system.
+Under the validation framework, this model is best described as **review-priority** evidence: 4 of 7 primary gates passed. The model is useful for structured review and prioritization, while the final interpretation should remain a review process rather than a stand-alone score.
 
 Because decisions are made at aggregate review levels, the planning-level fit is more relevant than the individual gain R-squared: latest-year gain R-squared is **0.266** for section means, **0.546** for course means, and **0.638** for teacher means.
 
-The workflow uses the direct-growth model to create a fair expected-growth baseline, then makes decisions from aggregate teacher, course, and section residuals with bootstrap uncertainty checks.
+The workflow uses the direct-growth model to create a fair expected-growth baseline, then identifies aggregate teacher, course, and section residuals with bootstrap uncertainty checks.
 
 | Slice | Priority or watch rows | Total reviewed |
 | --- | --- | --- |
@@ -39,24 +39,23 @@ Bright spots, watch-list rows, and the full decision table are generated as [dec
 
 1. Build a paired BOY/EOY growth extract from public-safe assessment records.
 2. Define the business outcome as score gain: EOY score minus BOY score.
-3. Create leakage-safe engineered features from BOY data and prior completed years: multi-year student history, section composition, transformations, and interaction terms.
-4. Search candidate expected-growth models across parametric, spline, GAM, regularized, tree-based, forest, boosting, MARS, ensemble, and excluded leakage-check specifications.
-5. Select the operating baseline using rolling-origin temporal validation, with repeated CV, process validation, locked-holdout review, bootstrap checks, and feature-stability diagnostics as supporting evidence.
-6. Score the latest year against the prior-year baseline.
-7. Aggregate observed-minus-expected growth by teacher, course, and section.
-8. Flag review targets only when the gap is large enough to matter and the uncertainty check supports follow-up.
+3. Use prior completed years to engineer pre-outcome predictors, compare candidate models, and select the expected-growth baseline.
+4. Hold out the latest completed year as the action-year review period.
+5. Score latest-year records against the prior-year baseline.
+6. Aggregate observed-minus-expected growth by teacher, course, and section.
+7. Flag review targets when the gap is large enough to matter and the uncertainty check supports follow-up.
 
 This design separates the prediction problem from the decision problem. The prediction model estimates what growth would be expected for a similar starting profile; the review layer asks where actual growth departed from that expectation.
 
 ## Direct Answers
 
-1. The analysis covers 1,737 paired BOY/EOY records across 174 section-year groups and 5 public-safe teacher identifiers.
+1. The analysis covers 1,737 paired BOY/EOY records across 174 section-year groups and 5 teacher identifiers.
 2. The training window is 2018-2019, 2019-2020, 2020-2021, 2021-2022, 2022-2023, 2023-2024; the action year is 2024-2025.
 3. The average raw gain across the full extract is 5.72 points; the latest-year raw gain is 5.34 points.
-4. The model search tested 31 candidate baselines across parametric, nonlinear, ensemble, and leakage-check families.
+4. The model search tested 31 candidate baselines across parametric, nonlinear, ensemble, and excluded ID-benchmark families.
 5. The selected direct-growth baseline has temporal expected-gain RMSE 4.663, temporal MAE 3.725, latest-year RMSE 4.693, and latest-year MAE 3.739.
-6. The modest individual gain R-squared is expected for a noisy improvement outcome; it is not the main business score.
-7. Teacher, course, and section flags are audit priorities. They are not automatic personnel ratings or causal claims.
+6. The individual gain R-squared is a supporting model-quality measure; the review decision is based on group-level observed-minus-expected growth.
+7. Teacher, course, and section flags are review priorities for planning and follow-up.
 
 ## Data Audit
 
@@ -90,13 +89,13 @@ The model-search guardrails were:
 - Use direct BOY/EOY score gain as the operating target because that is the stakeholder performance metric.
 - Select by rolling-origin temporal RMSE so the baseline is judged on future-facing generalization.
 - Use repeated-CV RMSE as the tie-breaker when rolling-origin RMSE differs by less than 0.01 points.
-- Keep teacher, course, and section identifiers out of the operating baseline because those are the review slices.
+- Keep teacher, course, and section identifiers out of the operating baseline because those are the groups being reviewed.
 - Use feature engineering only when the feature is available at BOY or from prior completed years.
 - Refit the selected production model on all completed years only after model selection.
-- Report individual gain R-squared as a signal-strength diagnostic, not as the headline business result.
-- Report EOY R-squared only as context because final score is mechanically easier to predict than growth.
+- Report individual gain R-squared as a supporting model-quality measure, not as the primary decision measure.
+- Report EOY R-squared only as context because final score is more directly related to starting score than growth is.
 
-The decision-grade target table below is intentionally strict. It prevents the project from claiming stronger performance judgment than the data support.
+The validation targets below are conservative. They keep the interpretation aligned with the strength of the evidence.
 
 | Gate | Decision-grade | Actual | Status |
 | --- | --- | --- | --- |
@@ -130,7 +129,7 @@ The first strength check is whether the selected model beats a naive baseline th
 
 <!-- PDF_PAGE_BREAK -->
 
-The table below shows the strongest candidate baselines tested. The selected model was chosen by rolling-origin validation, not by whichever model looked best on the latest year. The leakage-check row is shown for transparency but is not eligible because it would absorb the teacher/course patterns the review layer is designed to detect.
+The table below shows the strongest candidate baselines tested. The selected model was chosen by rolling-origin validation, not by whichever model looked best on the latest year. The excluded ID benchmark row is shown for transparency but is not eligible because it includes teacher/course identifiers that are part of the review layer.
 
 | Candidate model | Model type | Used? | Rolling RMSE | Latest RMSE | Latest MAE | Gain R2 | Read |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -141,13 +140,13 @@ The table below shows the strongest candidate baselines tested. The selected mod
 | GBM 2 | Boosting |  | 4.709 | 4.695 | 3.780 | 0.097 | Near tie |
 | MARS 2 | MARS |  | 4.725 | 4.618 | 3.714 | 0.126 | Near tie |
 | Ranger 1 | Ranger |  | 4.740 | 4.685 | 3.732 | 0.100 | Near tie |
-| Leakage check | Leakage |  | 2436.990 | 4.658 | 3.708 | 0.111 | Leakage only |
+| ID benchmark | ID benchmark |  | 2436.990 | 4.658 | 3.708 | 0.111 | Excluded |
 
 Full model artifacts: [model comparison](growth_model_comparison_display.csv), [model search grid](growth_model_search_grid.csv), [model strength](growth_model_strength.csv), [family summary](growth_model_family_summary.csv), [selection rationale](growth_model_selection_rationale.csv), [temporal validation](model_temporal_validation.csv), [rolling-origin validation](rolling_origin_validation.csv), [process validation](process_validation.csv), [locked holdout](locked_holdout_validation.csv), [validity targets](model_validity_targets.csv), and [bootstrap validation](model_bootstrap_validation.csv).
 
 ## Feature Discovery
 
-The model search includes leakage-safe feature engineering: multi-year prior student growth, prior trend and volatility, BOY score bands, section composition, attendance mix, nonlinear basis terms, and selected interactions. The table below shows which features mattered most when permuted in the locked action-year data.
+The model search includes time-appropriate feature engineering: multi-year prior student growth, prior trend and volatility, BOY score bands, section composition, attendance mix, nonlinear basis terms, and selected interactions. The table below shows which features mattered most when permuted in the locked action-year data.
 
 | Feature | RMSE lift if permuted | SD |
 | --- | --- | --- |
@@ -187,7 +186,7 @@ Feature artifacts: [feature importance](feature_importance.csv) and [feature sta
 
 ## Latest-Year Review Targets
 
-The latest-year review layer compares observed gain with expected gain for 24 section groups. The decision labels use a practical audit threshold: material gap, bootstrap interval direction, and BH-adjusted q-value for multiple-review control.
+The latest-year review layer compares observed gain with expected gain for 24 section groups. The decision labels use a practical review threshold: material gap, bootstrap interval direction, and BH-adjusted q-value for multiple-review control.
 
 **Teacher review**
 
@@ -294,7 +293,7 @@ The full section signal table is generated as [section signals](section_adjusted
 
 ## Teacher and Course Summaries
 
-These summaries aggregate the latest-year evidence into planning views. They support review conversations about pacing, curriculum alignment, attendance mix, and transferable practices. They should not be read as standalone personnel scores.
+These summaries aggregate the latest-year evidence into planning views. They support review conversations about pacing, curriculum alignment, attendance mix, and transferable practices.
 
 | Teacher | Sections | Records | Raw | Expected | Signal |
 | --- | --- | --- | --- | --- | --- |
@@ -322,7 +321,7 @@ These summaries aggregate the latest-year evidence into planning views. They sup
 
 ## Diagnostics and Sensitivity
 
-The baseline is strong for final-score expectation and weaker for individual gain variation. That pattern is expected and is part of the interpretation, not something to hide: BOY score explains much of EOY score, while individual improvement contains more unobserved classroom, attendance, motivation, and assessment noise. For review decisions, the model is used to build expected growth and then aggregate residuals by teacher, course, and section.
+The baseline is strong for final-score expectation and weaker for individual gain variation. That pattern is expected: BOY score explains much of EOY score, while individual improvement contains more unobserved classroom, attendance, motivation, and assessment variation. For review decisions, the model is used to build expected growth and then aggregate residuals by teacher, course, and section.
 
 | Diagnostic | Estimate | Interpretation |
 | --- | --- | --- |
@@ -372,7 +371,7 @@ The baseline is strong for final-score expectation and weaker for individual gai
 
 ## Technical Appendix
 
-The operating model excludes teacher IDs, course IDs, and section IDs. A leakage benchmark is reported only to show what would happen if persistent IDs were included in the baseline; it is not used for review because it would absorb the teacher/course patterns the decision layer is designed to detect.
+The operating model excludes teacher IDs, course IDs, and section IDs. An excluded ID benchmark is reported only to show what would happen if persistent IDs were included in the baseline; it is not used for review because it would absorb the same teacher/course patterns the decision layer is designed to examine.
 
 | Package | Installed |
 | --- | --- |
@@ -399,7 +398,7 @@ The operating model excludes teacher IDs, course IDs, and section IDs. A leakage
 | Action year | 2024-2025 |
 | Candidate models tested | 31 |
 | Operational candidates tested | 26 |
-| Excluded leakage benchmarks | 5 |
+| Excluded ID benchmarks | 5 |
 | Repeated CV folds | 5 |
 | Repeated CV repeats | 2 |
 | Temporal expected-gain RMSE | 4.663 |
@@ -416,11 +415,11 @@ The full selected-model metrics table is generated as [selected-model metrics](g
 
 ## Conclusion
 
-The project should be read as a statistical decision-support system, not as a simple prediction demo. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline at the group level, quantify uncertainty by slice, and translate the evidence into review priorities.
+The project should be read as a statistical decision-support system. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline at the group level, quantify uncertainty by slice, and translate the evidence into review priorities.
 
 The recommended stakeholder action is to review the flagged teacher, course, and section patterns before the next assessment cycle. Priority targets deserve support or investigation; positive anomalies deserve study for transferable practices; watch-list rows deserve context review before escalation.
 
-The important limitation is that the data are public-safe and generalized from an assessment workflow. The outputs demonstrate the analysis pattern and should not be used as real student, teacher, or personnel decisions.
+The important limitation is that the data are public-safe and generalized from an assessment workflow. The outputs demonstrate the analysis pattern and should be interpreted as portfolio evidence rather than operational decisions about real students or staff.
 
 ## Reproducibility
 

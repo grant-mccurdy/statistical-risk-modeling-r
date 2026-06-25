@@ -180,7 +180,7 @@ short_model_name <- function(model) {
     "Growth stacked ensemble" = "Growth stacked ensemble",
     "EOY readiness benchmark" = "EOY readiness",
     "EOY interaction benchmark" = "EOY interaction",
-    "Teacher/course leakage benchmark" = "Leakage check",
+    "Teacher/course leakage benchmark" = "ID benchmark",
     "Growth ensemble balanced" = "Ensemble balanced",
     "Growth ensemble nonlinear weighted" = "Ensemble weighted",
     "Growth ensemble discovery weighted" = "Discovery ensemble"
@@ -209,7 +209,7 @@ short_family_name <- function(family) {
     "Parametric history/composition" = "History",
     "Lagged teacher/course context" = "Future context",
     "EOY-derived benchmark" = "EOY benchmark",
-    "Leakage benchmark" = "Leakage"
+    "Leakage benchmark" = "ID benchmark"
   )
   ifelse(family %in% names(labels), unname(labels[family]), family)
 }
@@ -628,7 +628,7 @@ decision_grade_status <- ifelse(
   primary_pass_count == primary_total_count &&
     all(model_validity_targets$Status[model_validity_targets$`Evidence role` == "Calibration gate"] == "Pass"),
   "decision-grade",
-  "directional review"
+  "review-priority"
 )
 validity_report <- model_validity_targets[
   model_validity_targets$Metric %in% c(
@@ -712,7 +712,7 @@ model_comparison_compact$Interpretation <- ifelse(
   "Selected",
   ifelse(
     model_comparison$Role == "Excluded leakage benchmark",
-    "Leakage only",
+    "Excluded",
     ifelse(
       model_comparison_compact$Eligible == "Yes" &
         as_report_num(model_comparison_compact$Delta) <= 0.10,
@@ -897,6 +897,7 @@ appendix_metrics <- final_metrics[
   drop = FALSE
 ]
 appendix_metrics <- appendix_metrics[!is.na(appendix_metrics$Metric), , drop = FALSE]
+appendix_metrics$Metric[appendix_metrics$Metric == "Excluded leakage benchmarks"] <- "Excluded ID benchmarks"
 
 dependency_report <- dependency_status
 dependency_report$Installed <- ifelse(dependency_report$Installed == "TRUE", "Available", "Not installed")
@@ -944,34 +945,33 @@ report_lines <- c(
   "## Recommendation",
   "",
   paste0(
-    "Use the latest completed assessment year, **", action_year,
-    "**, to identify teacher, course, and section patterns that deserve review before the next cycle. ",
-    "The stakeholder metric is **BOY/EOY score gain**: end-of-year score minus beginning-of-year score for the same public-safe student record."
+    "Use prior completed assessment years to build and validate an expected-growth baseline, then apply that baseline to the latest completed year, **", action_year,
+    "**, to identify teacher, course, and section patterns that may deserve review before the next cycle. ",
+    "The stakeholder metric is **BOY/EOY score gain**: end-of-year score minus beginning-of-year score for the same student record."
   ),
   "",
   paste0(
-    "The decision system does not ask whether old sections should be managed retroactively. ",
-    "It asks whether the most recent actual growth was materially above or below an expected-growth baseline trained only on prior years."
+    "Historical years establish expected growth. The latest completed year is scored against that expectation to produce current review priorities."
   ),
   "",
   "## How To Read The Model Results",
   "",
   paste0(
-    "The model is **not** intended to forecast each student's exact score gain. ",
-    "Individual growth is noisy because similar students can improve by different amounts for reasons not fully captured in the extract. ",
+    "The model is designed for **group-level review**, not individual student forecasting. ",
+    "Individual growth varies because similar students can improve by different amounts for reasons not fully captured in the extract. ",
     "For that reason, the latest-year individual gain R-squared of **", latest_gain_r2,
-    "** is treated as a signal-strength diagnostic, not the headline business result."
+    "** is a supporting model-quality measure, not the primary decision measure."
   ),
   "",
   paste0(
-    "The business question is group-level: after adjusting for starting score, readiness, attendance, prior history, course track, grade level, and section composition, ",
+    "The decision question is group-level: after adjusting for starting score, readiness, attendance, prior history, course track, grade level, and section composition, ",
     "did a teacher, course, or section produce more or less average growth than expected? ",
     "That comparison is more stable because student-level noise partly averages out across groups."
   ),
   "",
   paste0(
     "The EOY R-squared of **", latest_eoy_r2,
-    "** is reported only to show that final score is mechanically easier to predict from BOY score. ",
+    "** is reported only to show that final score is more directly related to BOY score. ",
     "It should not be read as evidence that the model precisely predicts improvement. ",
     "The relevant evidence is out-of-sample lift versus a naive baseline, aggregate fit, residual calibration, uncertainty intervals, and flag stability."
   ),
@@ -985,10 +985,10 @@ report_lines <- c(
   ),
   "",
   paste0(
-    "Under the stricter validity framework, this model is best described as **",
+    "Under the validation framework, this model is best described as **",
     decision_grade_status,
     "** evidence: ", primary_pass_count, " of ", primary_total_count,
-    " primary gates passed. The model is useful for structured review and prioritization, but the report should not overstate it as a definitive teacher or section rating system."
+    " primary gates passed. The model is useful for structured review and prioritization, while the final interpretation should remain a review process rather than a stand-alone score."
   ),
   "",
   paste0(
@@ -997,7 +997,7 @@ report_lines <- c(
     "** for course means, and **", teacher_mean_r2, "** for teacher means."
   ),
   "",
-  "The workflow uses the direct-growth model to create a fair expected-growth baseline, then makes decisions from aggregate teacher, course, and section residuals with bootstrap uncertainty checks.",
+  "The workflow uses the direct-growth model to create a fair expected-growth baseline, then identifies aggregate teacher, course, and section residuals with bootstrap uncertainty checks.",
   "",
   markdown_table(decision_counts),
   "",
@@ -1012,12 +1012,11 @@ report_lines <- c(
   "",
   "1. Build a paired BOY/EOY growth extract from public-safe assessment records.",
   "2. Define the business outcome as score gain: EOY score minus BOY score.",
-  "3. Create leakage-safe engineered features from BOY data and prior completed years: multi-year student history, section composition, transformations, and interaction terms.",
-  "4. Search candidate expected-growth models across parametric, spline, GAM, regularized, tree-based, forest, boosting, MARS, ensemble, and excluded leakage-check specifications.",
-  "5. Select the operating baseline using rolling-origin temporal validation, with repeated CV, process validation, locked-holdout review, bootstrap checks, and feature-stability diagnostics as supporting evidence.",
-  "6. Score the latest year against the prior-year baseline.",
-  "7. Aggregate observed-minus-expected growth by teacher, course, and section.",
-  "8. Flag review targets only when the gap is large enough to matter and the uncertainty check supports follow-up.",
+  "3. Use prior completed years to engineer pre-outcome predictors, compare candidate models, and select the expected-growth baseline.",
+  "4. Hold out the latest completed year as the action-year review period.",
+  "5. Score latest-year records against the prior-year baseline.",
+  "6. Aggregate observed-minus-expected growth by teacher, course, and section.",
+  "7. Flag review targets when the gap is large enough to matter and the uncertainty check supports follow-up.",
   "",
   paste0(
     "This design separates the prediction problem from the decision problem. ",
@@ -1026,13 +1025,13 @@ report_lines <- c(
   "",
   "## Direct Answers",
   "",
-  paste0("1. The analysis covers ", included_pairs, " paired BOY/EOY records across ", section_groups, " section-year groups and ", teachers, " public-safe teacher identifiers."),
+  paste0("1. The analysis covers ", included_pairs, " paired BOY/EOY records across ", section_groups, " section-year groups and ", teachers, " teacher identifiers."),
   paste0("2. The training window is ", training_years, "; the action year is ", action_year, "."),
   paste0("3. The average raw gain across the full extract is ", mean_gain, " points; the latest-year raw gain is ", latest_gain, " points."),
-  paste0("4. The model search tested ", candidate_count, " candidate baselines across parametric, nonlinear, ensemble, and leakage-check families."),
+  paste0("4. The model search tested ", candidate_count, " candidate baselines across parametric, nonlinear, ensemble, and excluded ID-benchmark families."),
   paste0("5. The selected direct-growth baseline has temporal expected-gain RMSE ", temporal_gain_rmse, ", temporal MAE ", temporal_gain_mae, ", latest-year RMSE ", latest_gain_rmse, ", and latest-year MAE ", latest_gain_mae, "."),
-  "6. The modest individual gain R-squared is expected for a noisy improvement outcome; it is not the main business score.",
-  "7. Teacher, course, and section flags are audit priorities. They are not automatic personnel ratings or causal claims.",
+  "6. The individual gain R-squared is a supporting model-quality measure; the review decision is based on group-level observed-minus-expected growth.",
+  "7. Teacher, course, and section flags are review priorities for planning and follow-up.",
   "",
   "## Data Audit",
   "",
@@ -1057,13 +1056,13 @@ report_lines <- c(
   "- Use direct BOY/EOY score gain as the operating target because that is the stakeholder performance metric.",
   "- Select by rolling-origin temporal RMSE so the baseline is judged on future-facing generalization.",
   "- Use repeated-CV RMSE as the tie-breaker when rolling-origin RMSE differs by less than 0.01 points.",
-  "- Keep teacher, course, and section identifiers out of the operating baseline because those are the review slices.",
+  "- Keep teacher, course, and section identifiers out of the operating baseline because those are the groups being reviewed.",
   "- Use feature engineering only when the feature is available at BOY or from prior completed years.",
   "- Refit the selected production model on all completed years only after model selection.",
-  "- Report individual gain R-squared as a signal-strength diagnostic, not as the headline business result.",
-  "- Report EOY R-squared only as context because final score is mechanically easier to predict than growth.",
+  "- Report individual gain R-squared as a supporting model-quality measure, not as the primary decision measure.",
+  "- Report EOY R-squared only as context because final score is more directly related to starting score than growth is.",
   "",
-  "The decision-grade target table below is intentionally strict. It prevents the project from claiming stronger performance judgment than the data support.",
+  "The validation targets below are conservative. They keep the interpretation aligned with the strength of the evidence.",
   "",
   markdown_table(validity_report),
   "",
@@ -1073,7 +1072,7 @@ report_lines <- c(
   "",
   "<!-- PDF_PAGE_BREAK -->",
   "",
-  "The table below shows the strongest candidate baselines tested. The selected model was chosen by rolling-origin validation, not by whichever model looked best on the latest year. The leakage-check row is shown for transparency but is not eligible because it would absorb the teacher/course patterns the review layer is designed to detect.",
+  "The table below shows the strongest candidate baselines tested. The selected model was chosen by rolling-origin validation, not by whichever model looked best on the latest year. The excluded ID benchmark row is shown for transparency but is not eligible because it includes teacher/course identifiers that are part of the review layer.",
   "",
   markdown_table(model_comparison_report),
   "",
@@ -1104,7 +1103,7 @@ report_lines <- c(
   "",
   "## Feature Discovery",
   "",
-  "The model search includes leakage-safe feature engineering: multi-year prior student growth, prior trend and volatility, BOY score bands, section composition, attendance mix, nonlinear basis terms, and selected interactions. The table below shows which features mattered most when permuted in the locked action-year data.",
+  "The model search includes time-appropriate feature engineering: multi-year prior student growth, prior trend and volatility, BOY score bands, section composition, attendance mix, nonlinear basis terms, and selected interactions. The table below shows which features mattered most when permuted in the locked action-year data.",
   "",
   markdown_table(feature_importance_report),
   "",
@@ -1130,7 +1129,7 @@ report_lines <- c(
   paste0(
     "The latest-year review layer compares observed gain with expected gain for ",
     latest_section_groups, " section groups. ",
-    "The decision labels use a practical audit threshold: material gap, bootstrap interval direction, and BH-adjusted q-value for multiple-review control."
+    "The decision labels use a practical review threshold: material gap, bootstrap interval direction, and BH-adjusted q-value for multiple-review control."
   ),
   "",
   "**Teacher review**",
@@ -1198,7 +1197,7 @@ report_lines <- c(
   "",
   "## Teacher and Course Summaries",
   "",
-  "These summaries aggregate the latest-year evidence into planning views. They support review conversations about pacing, curriculum alignment, attendance mix, and transferable practices. They should not be read as standalone personnel scores.",
+  "These summaries aggregate the latest-year evidence into planning views. They support review conversations about pacing, curriculum alignment, attendance mix, and transferable practices.",
   "",
   markdown_table(teacher_summary_report),
   "",
@@ -1212,7 +1211,7 @@ report_lines <- c(
   "",
   paste0(
     "The baseline is strong for final-score expectation and weaker for individual gain variation. ",
-    "That pattern is expected and is part of the interpretation, not something to hide: BOY score explains much of EOY score, while individual improvement contains more unobserved classroom, attendance, motivation, and assessment noise. ",
+    "That pattern is expected: BOY score explains much of EOY score, while individual improvement contains more unobserved classroom, attendance, motivation, and assessment variation. ",
     "For review decisions, the model is used to build expected growth and then aggregate residuals by teacher, course, and section."
   ),
   "",
@@ -1230,7 +1229,7 @@ report_lines <- c(
   "",
   "## Technical Appendix",
   "",
-  "The operating model excludes teacher IDs, course IDs, and section IDs. A leakage benchmark is reported only to show what would happen if persistent IDs were included in the baseline; it is not used for review because it would absorb the teacher/course patterns the decision layer is designed to detect.",
+  "The operating model excludes teacher IDs, course IDs, and section IDs. An excluded ID benchmark is reported only to show what would happen if persistent IDs were included in the baseline; it is not used for review because it would absorb the same teacher/course patterns the decision layer is designed to examine.",
   "",
   markdown_table(dependency_report),
   "",
@@ -1243,11 +1242,11 @@ report_lines <- c(
   "",
   "## Conclusion",
   "",
-  "The project should be read as a statistical decision-support system, not as a simple prediction demo. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline at the group level, quantify uncertainty by slice, and translate the evidence into review priorities.",
+  "The project should be read as a statistical decision-support system. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline at the group level, quantify uncertainty by slice, and translate the evidence into review priorities.",
   "",
   "The recommended stakeholder action is to review the flagged teacher, course, and section patterns before the next assessment cycle. Priority targets deserve support or investigation; positive anomalies deserve study for transferable practices; watch-list rows deserve context review before escalation.",
   "",
-  "The important limitation is that the data are public-safe and generalized from an assessment workflow. The outputs demonstrate the analysis pattern and should not be used as real student, teacher, or personnel decisions.",
+  "The important limitation is that the data are public-safe and generalized from an assessment workflow. The outputs demonstrate the analysis pattern and should be interpreted as portfolio evidence rather than operational decisions about real students or staff.",
   "",
   "## Reproducibility",
   "",
@@ -1264,7 +1263,7 @@ executive_lines <- c(
   "# Executive Brief: Assessment Growth and Section Performance",
   "",
   paste0(
-    "**Purpose:** use prior-year BOY/EOY assessment history to build an expected-growth baseline, then review the latest completed year for teacher, course, and section patterns that deserve action before the next cycle."
+    "**Purpose:** use prior completed assessment years to build and validate an expected-growth baseline, then apply it to the latest completed year for teacher, course, and section review before the next cycle."
   ),
   "",
   paste0(
@@ -1283,10 +1282,10 @@ executive_lines <- c(
   ),
   "",
   paste0(
-    "**How to read performance:** the model is not a precise forecast of each student's score gain. ",
+    "**How to read performance:** the model is designed for group-level review rather than individual student forecasting. ",
     "Individual gain R-squared is ", latest_gain_r2,
     ", while aggregate fit is stronger for teacher and course means. ",
-    "Use the baseline to compare group-level actual growth with expected growth, not as a student-level prediction score."
+    "Use the baseline to compare group-level actual growth with expected growth."
   ),
   "",
   paste0(
@@ -1295,7 +1294,7 @@ executive_lines <- c(
   "",
   markdown_table(priority_target_report),
   "",
-  "**Guardrail:** the outputs are review priorities, not automatic teacher evaluation, compensation, discipline, or personnel decisions."
+  "**Appropriate use:** the outputs are review priorities for planning and follow-up."
 )
 
 writeLines(executive_lines, file.path("reports", "executive_brief.md"))
@@ -1305,7 +1304,7 @@ model_card_lines <- c(
   "",
   "## Intended Use",
   "",
-  "Estimate an expected BOY/EOY assessment-growth baseline and identify public-safe teacher, course, and section patterns that deserve future instructional review.",
+  "Estimate an expected BOY/EOY assessment-growth baseline from prior completed years and identify latest-year teacher, course, and section patterns that deserve future instructional review.",
   "",
   "## Not Intended For",
   "",
@@ -1323,7 +1322,7 @@ model_card_lines <- c(
   "",
   paste0(
     "Selected baseline: ", selected_model,
-    ". The operating target is direct BOY/EOY score gain. Candidate families include a naive mean-growth benchmark, linear baselines, lagged-history and section-composition parametric models, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regularized regression, regression trees, random forests, gradient boosting, hand-weighted ensembles, stacked ensembles, EOY-derived benchmarks, and an excluded teacher/course ID leakage check."
+    ". The operating target is direct BOY/EOY score gain. Candidate families include a naive mean-growth benchmark, linear baselines, lagged-history and section-composition parametric models, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regularized regression, regression trees, random forests, gradient boosting, hand-weighted ensembles, stacked ensembles, EOY-derived benchmarks, and an excluded teacher/course ID benchmark."
   ),
   "",
   "## Validation",
@@ -1336,7 +1335,7 @@ model_card_lines <- c(
   "",
   "## Decision Layer",
   "",
-  "Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, mixed-effects shrinkage review, and decision labels. The labels are audit priorities, not causal claims.",
+  "Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, mixed-effects shrinkage review, and decision labels. The labels are review priorities for planning and follow-up.",
   "",
   "## Monitoring Recommendations",
   "",
