@@ -14,39 +14,44 @@ Public-safe paired BOY/EOY assessment records with 1,737 modeled pairs. The acti
 
 ## Model
 
-Selected baseline: EOY linear benchmark. Candidate families include direct gain models, predicted EOY models, interaction surfaces, GAM smooths, random forests, gradient boosting, and an excluded teacher/course ID leakage check.
+Selected baseline: Growth ensemble balanced. The operating target is direct BOY/EOY score gain. Candidate families include linear baselines, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regression trees, random forests, gradient boosting, validation ensembles, EOY-derived benchmarks, and an excluded teacher/course ID leakage check.
 
 ## Validation
 
 | Metric | Value |
 | --- | --- |
-| Selected model | EOY linear benchmark |
-| Selected target strategy | Predicted EOY |
-| Selected method | Linear model |
-| Selection rule | Lowest temporal-validation expected-gain RMSE among operational candidates; ties within 1% choose simpler model |
+| Selected model | Growth ensemble balanced |
+| Selected target strategy | Direct growth |
+| Selected method | Ensemble |
+| Selected family | Validation ensemble |
+| Selected tuned parameters | Growth gradient boosting 1 weight=1; Growth GAM k4 weight=1; Growth polynomial degree 3 weight=1 |
+| Selection rule | Lowest repeated-CV RMSE among direct-growth candidates within 0.01 points of the best temporal-CV RMSE |
 | Training paired records | 1,485 |
 | Latest-year action paired records | 252 |
 | Training years | 2025-2026, 2026-2027, 2027-2028, 2028-2029, 2029-2030, 2030-2031 |
 | Action year | 2031-2032 |
-| Candidate models tested | 13 |
-| Operational candidates tested | 12 |
-| Excluded leakage benchmarks | 1 |
+| Candidate models tested | 19 |
+| Operational candidates tested | 16 |
+| Excluded leakage benchmarks | 3 |
 | Repeated CV folds | 5 |
-| Repeated CV repeats | 3 |
-| Temporal expected-gain RMSE | 4.684 |
-| Temporal expected-gain R-squared | 0.153 |
-| Temporal EOY R-squared | 0.937 |
-| Latest-year expected-gain RMSE | 4.683 |
-| Latest-year expected-gain R-squared | 0.101 |
-| Latest-year EOY R-squared | 0.932 |
+| Repeated CV repeats | 2 |
+| Temporal expected-gain RMSE | 4.631 |
+| Temporal expected-gain MAE | 3.711 |
+| Temporal expected-gain R-squared | 0.172 |
+| Temporal expected-gain RMSE SD | 0.229 |
+| Temporal EOY R-squared | 0.938 |
+| Latest-year expected-gain RMSE | 4.660 |
+| Latest-year expected-gain MAE | 3.725 |
+| Latest-year expected-gain R-squared | 0.110 |
+| Latest-year EOY R-squared | 0.933 |
 
 | Metric | Estimate | 95% interval |
 | --- | --- | --- |
-| Expected-gain RMSE | 4.683 | 4.270 to 5.104 |
-| Expected-gain MAE | 3.728 | 3.375 to 4.072 |
-| Expected-gain R-squared | 0.101 | -0.007 to 0.186 |
-| EOY RMSE | 4.683 | 4.270 to 5.104 |
-| EOY R-squared | 0.932 | 0.916 to 0.944 |
+| Expected-gain RMSE | 4.660 | 4.226 to 5.081 |
+| Expected-gain MAE | 3.725 | 3.359 to 4.071 |
+| Expected-gain R-squared | 0.110 | 0.009 to 0.189 |
+| EOY RMSE | 4.660 | 4.226 to 5.081 |
+| EOY R-squared | 0.933 | 0.917 to 0.944 |
 
 ## Decision Layer
 

@@ -2,3 +2,4 @@
 "mgcv",TRUE
 "randomForest",TRUE
 "gbm",TRUE
+"rpart",TRUE

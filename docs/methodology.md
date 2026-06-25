@@ -54,12 +54,16 @@ adjusted growth residual = observed gain - expected gain
 
 Candidate expected-growth models include:
 
-- Direct gain linear baselines
-- Predicted EOY linear baselines
+- Direct growth linear baselines
+- Direct growth polynomial terms
 - Interaction surfaces for baseline score, readiness, track, and attendance
+- Cyclic school-year terms inspired by parametric shape discovery
 - GAM smooths for nonlinear baseline/readiness/attendance/year effects
+- Regression-tree candidates
 - Random forest candidates
 - Gradient boosting candidates
+- Validation ensembles that average strong nonlinear and parametric candidates
+- EOY-derived benchmarks that predict EOY first and then subtract BOY
 - A teacher/course ID leakage benchmark that is excluded from operating
   selection
 
@@ -72,12 +76,12 @@ The model-selection process uses three validation views:
 - Latest-year action evaluation after the baseline is selected, used to assess
   the year being reviewed but not to choose the model.
 
-Temporal expected-gain RMSE is the primary selection criterion. If operational
-candidates are within one percent of the best temporal RMSE, the simpler
-baseline is selected because the difference is not large enough to justify a
-more complex operating model. Teacher IDs, course IDs, and section IDs are
-excluded from the operating baseline because including them would absorb the
-patterns the review layer is designed to surface.
+Temporal expected-gain RMSE is the primary selection criterion. When candidates
+are within 0.01 points of the best leave-one-year-out temporal RMSE, repeated-CV
+RMSE is used as the stability tie-breaker. Teacher IDs, course IDs, and section
+IDs are excluded from the operating baseline because including them would absorb
+the patterns the review layer is designed to surface. Those ID-heavy models are
+reported only as leakage checks.
 
 The report separates two validation views:
 
@@ -89,6 +93,11 @@ The report separates two validation views:
 The EOY R-squared is expected to be higher because BOY score explains much of
 final EOY score. Gain R-squared is lower because individual improvement remains
 noisy after starting score is removed.
+
+The purpose of the model is therefore not to maximize a visually impressive
+EOY R-squared. It is to construct the strongest public-safe expected-growth
+baseline available from prior-year information, then use aggregate residuals to
+identify latest-year teacher, course, and section patterns that merit review.
 
 ## Latest-Year Decision Signals
 
@@ -137,3 +146,6 @@ The diagnostic layer includes:
 - Raw-vs-adjusted rank correlation
 - Top-section overlap between raw and adjusted rankings
 - Section-size sensitivity checks
+- Model-search artifacts by family, tuned parameter grid, temporal validation,
+  repeated CV, AIC/BIC for applicable parametric models, and bootstrap
+  intervals for latest-year prediction performance

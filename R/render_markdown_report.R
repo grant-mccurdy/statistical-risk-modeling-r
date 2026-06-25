@@ -5,6 +5,9 @@ ensure_project_dirs()
 required_tables <- c(
   file.path("reports", "growth_extract_profile.csv"),
   file.path("reports", "growth_model_comparison_display.csv"),
+  file.path("reports", "growth_model_search_grid.csv"),
+  file.path("reports", "growth_model_family_summary.csv"),
+  file.path("reports", "growth_model_selection_rationale.csv"),
   file.path("reports", "growth_shape_review.csv"),
   file.path("reports", "growth_final_metrics.csv"),
   file.path("reports", "model_dependency_status.csv"),
@@ -95,19 +98,30 @@ pretty_target <- function(target) {
 
 short_model_name <- function(model) {
   labels <- c(
-    "EOY readiness model" = "EOY readiness",
-    "Gain readiness model" = "Gain readiness",
-    "EOY GAM" = "EOY GAM",
-    "Gain GAM" = "Gain GAM",
-    "EOY interaction model" = "EOY interaction",
-    "Gain interaction model" = "Gain interaction",
+    "Growth linear benchmark" = "Growth linear",
+    "Growth readiness model" = "Growth readiness",
+    "Growth polynomial degree 2" = "Growth poly d2",
+    "Growth polynomial degree 3" = "Growth poly d3",
+    "Growth interaction model" = "Growth interactions",
+    "Growth cyclic interaction model" = "Growth cyclic",
+    "Growth GAM k4" = "GAM k4",
+    "Growth GAM k6" = "GAM k6",
+    "Growth GAM k8" = "GAM k8",
+    "Growth GAM k10" = "GAM k10",
+    "Growth regression tree 1" = "Tree 1",
+    "Growth regression tree 2" = "Tree 2",
+    "Growth regression tree 3" = "Tree 3",
+    "Growth random forest 1" = "RF 1",
+    "Growth random forest 2" = "RF 2",
+    "Growth random forest 3" = "RF 3",
+    "Growth gradient boosting 1" = "GBM 1",
+    "Growth gradient boosting 2" = "GBM 2",
+    "Growth gradient boosting 3" = "GBM 3",
+    "EOY readiness benchmark" = "EOY readiness",
+    "EOY interaction benchmark" = "EOY interaction",
     "Teacher/course leakage benchmark" = "Leakage check",
-    "EOY linear benchmark" = "EOY linear",
-    "Gain linear benchmark" = "Gain linear",
-    "Gain gradient boosting" = "Gain GBM",
-    "EOY gradient boosting" = "EOY GBM",
-    "Gain random forest" = "Gain RF",
-    "EOY random forest" = "EOY RF"
+    "Growth ensemble balanced" = "Growth ensemble balanced",
+    "Growth ensemble nonlinear weighted" = "Growth ensemble nonlinear weighted"
   )
   ifelse(model %in% names(labels), unname(labels[model]), model)
 }
@@ -225,6 +239,9 @@ model_comparison <- read_display_csv(
   file.path("reports", "growth_model_comparison_display.csv"),
   check_names = FALSE
 )
+model_search_grid <- read_display_csv(file.path("reports", "growth_model_search_grid.csv"))
+family_summary <- read_display_csv(file.path("reports", "growth_model_family_summary.csv"))
+selection_rationale <- read_display_csv(file.path("reports", "growth_model_selection_rationale.csv"))
 shape_review <- read_display_csv(file.path("reports", "growth_shape_review.csv"))
 final_metrics <- read_display_csv(file.path("reports", "growth_final_metrics.csv"))
 dependency_status <- read_display_csv(file.path("reports", "model_dependency_status.csv"))
@@ -244,11 +261,19 @@ diagnostics <- read_display_csv(file.path("reports", "growth_diagnostics.csv"))
 sensitivity <- read_display_csv(file.path("reports", "growth_sensitivity.csv"))
 
 names(model_comparison) <- c(
-  "Model", "Selected", "Role", "Target", "Method", "Params", "CV RMSE",
-  "CV SD", "CV MAE", "CV R2", "CV EOY R2", "Temporal RMSE",
-  "Temporal SD", "Temporal R2", "Temporal EOY R2", "Latest RMSE",
-  "Latest R2", "Latest EOY R2", "Delta"
+  "Model", "Selected", "Role", "Target", "Method", "Family", "Complexity",
+  "Tuned", "Eligible", "Params", "CV RMSE", "CV SD", "CV MAE", "CV R2",
+  "CV EOY R2", "Temporal RMSE", "Temporal SD", "Temporal R2",
+  "Temporal EOY R2", "Latest RMSE", "Latest MAE", "Latest R2",
+  "Latest EOY R2", "Train R2", "Adj R2", "AIC", "BIC", "Delta"
 )
+names(family_summary) <- c(
+  "Family", "Candidates", "Eligible", "Best model", "Selected family",
+  "Best temporal RMSE", "Best delta RMSE", "Best temporal MAE",
+  "Best temporal R2", "Best latest RMSE", "Best latest R2",
+  "Best tuned parameters"
+)
+names(selection_rationale) <- c("Decision", "Rationale")
 names(shape_review) <- c(
   "Family", "Representative model", "Why tested", "Decision",
   "Temporal RMSE", "Latest RMSE"
@@ -280,6 +305,13 @@ names(sensitivity) <- c("Measure", "Value")
 selected_model <- metric_value("Selected model")
 selected_target <- metric_value("Selected target strategy")
 selected_method <- metric_value("Selected method")
+selected_family <- metric_value("Selected family")
+selected_tuned <- metric_value("Selected tuned parameters")
+selected_tuned_text <- if (selected_model == "Growth ensemble balanced") {
+  "an equal-weight blend of gradient boosting, GAM, and degree-3 polynomial growth predictions"
+} else {
+  selected_tuned
+}
 selection_rule <- metric_value("Selection rule")
 candidate_count <- metric_value("Candidate models tested")
 included_pairs <- profile_value("Included paired records")
@@ -292,15 +324,30 @@ action_year <- metric_value("Action year")
 mean_gain <- metric_value("Mean raw BOY/EOY gain")
 latest_gain <- sensitivity$Value[sensitivity$Measure == "Latest-year mean raw BOY/EOY gain"][1]
 temporal_gain_rmse <- metric_value("Temporal expected-gain RMSE")
+temporal_gain_mae <- metric_value("Temporal expected-gain MAE")
 temporal_gain_r2 <- metric_value("Temporal expected-gain R-squared")
+temporal_gain_sd <- metric_value("Temporal expected-gain RMSE SD")
 temporal_eoy_r2 <- metric_value("Temporal EOY R-squared")
 latest_gain_rmse <- metric_value("Latest-year expected-gain RMSE")
+latest_gain_mae <- metric_value("Latest-year expected-gain MAE")
 latest_gain_r2 <- metric_value("Latest-year expected-gain R-squared")
 latest_eoy_r2 <- metric_value("Latest-year EOY R-squared")
 latest_section_groups <- metric_value("Latest-year section groups")
 
 selected_row <- model_comparison[model_comparison$Selected == "Yes", , drop = FALSE]
-best_temporal_row <- model_comparison[1, , drop = FALSE]
+eligible_model_rows <- model_comparison[
+  model_comparison$Eligible == "Yes" &
+    model_comparison$Role == "Operational candidate" &
+    model_comparison$Target == "Direct growth",
+  ,
+  drop = FALSE
+]
+best_temporal_row <- if (nrow(eligible_model_rows) > 0) {
+  eligible_model_rows[order(as_report_num(eligible_model_rows$`Temporal RMSE`)), , drop = FALSE][1, , drop = FALSE]
+} else {
+  model_comparison[1, , drop = FALSE]
+}
+best_overall_row <- model_comparison[1, , drop = FALSE]
 
 teacher_priority <- compact_review(latest_teacher_review, "teacher_id", 8)
 course_priority <- compact_review(latest_course_review, "course_id", 8)
@@ -333,21 +380,35 @@ decision_counts <- data.frame(
 model_comparison_compact <- model_comparison
 model_comparison_compact$Model <- short_model_name(model_comparison_compact$Model)
 model_rows <- unique(c(
-  seq_len(min(8, nrow(model_comparison_compact))),
+  which(model_comparison_compact$Eligible == "Yes")[seq_len(min(10, sum(model_comparison_compact$Eligible == "Yes")))],
   which(model_comparison$Role == "Excluded leakage benchmark")[1]
 ))
 model_rows <- model_rows[!is.na(model_rows)]
 model_comparison_report <- model_comparison_compact[
   model_rows,
   c(
-    "Model", "Selected", "Target", "Method", "CV RMSE",
-    "Temporal RMSE", "Latest RMSE", "Latest EOY R2"
+    "Model", "Selected", "Family", "CV RMSE",
+    "Temporal RMSE", "Temporal R2", "Latest RMSE", "Latest R2"
   ),
   drop = FALSE
 ]
 names(model_comparison_report) <- c(
-  "Model", "Use", "Target", "Method", "CV RMSE",
-  "Temporal RMSE", "Latest RMSE", "Latest EOY R2"
+  "Model", "Use", "Family", "CV RMSE",
+  "Temporal RMSE", "Temporal R2", "Latest RMSE", "Latest R2"
+)
+
+family_summary_report <- family_summary[
+  ,
+  c(
+    "Family", "Candidates", "Eligible", "Best model", "Selected family",
+    "Best temporal RMSE", "Best temporal R2", "Best latest RMSE"
+  ),
+  drop = FALSE
+]
+family_summary_report[["Best model"]] <- short_model_name(family_summary_report[["Best model"]])
+names(family_summary_report) <- c(
+  "Family", "Candidates", "Eligible", "Best model", "Selected",
+  "Temporal RMSE", "Temporal R2", "Latest RMSE"
 )
 
 shape_review_report <- shape_review[
@@ -381,6 +442,12 @@ section_highlights_report <- section_highlights
 section_highlights_report$Section <- short_section_label(section_highlights_report$Section)
 section_highlights_report$Course <- pretty_course(section_highlights_report$Course)
 section_highlights_report$`Adjusted signal` <- signed_text(section_highlights_report$`Adjusted signal`, 2)
+section_highlights_report$Category <- c(
+  "Within expected range" = "In range",
+  "Above expected" = "Above",
+  "Below expected" = "Below",
+  "Small group" = "Small n"
+)[section_highlights_report$Category]
 section_highlights_report <- section_highlights_report[
   ,
   c(
@@ -456,6 +523,8 @@ appendix_metric_names <- c(
   "Selected model",
   "Selected target strategy",
   "Selected method",
+  "Selected family",
+  "Selected tuned parameters",
   "Selection rule",
   "Training paired records",
   "Latest-year action paired records",
@@ -467,9 +536,12 @@ appendix_metric_names <- c(
   "Repeated CV folds",
   "Repeated CV repeats",
   "Temporal expected-gain RMSE",
+  "Temporal expected-gain MAE",
   "Temporal expected-gain R-squared",
+  "Temporal expected-gain RMSE SD",
   "Temporal EOY R-squared",
   "Latest-year expected-gain RMSE",
+  "Latest-year expected-gain MAE",
   "Latest-year expected-gain R-squared",
   "Latest-year EOY R-squared"
 )
@@ -491,6 +563,18 @@ selection_delta <- if (nrow(selected_row) > 0) {
   ""
 }
 
+if (nrow(best_overall_row) > 0 &&
+    best_overall_row$Model != best_temporal_row$Model &&
+    best_overall_row$Eligible != "Yes") {
+  overall_context <- paste0(
+    "The lowest overall temporal RMSE was **", best_overall_row$`Temporal RMSE`,
+    "** from **", best_overall_row$Model,
+    "**, but that row is reported as a benchmark rather than an operating baseline because it is not an eligible direct-growth candidate."
+  )
+} else {
+  overall_context <- ""
+}
+
 report_lines <- c(
   "# Assessment Growth and Section Performance Analytics in R",
   "",
@@ -509,15 +593,17 @@ report_lines <- c(
   "",
   paste0(
     "The baseline selected for operations is **", selected_model, "**. ",
-    "It predicts EOY score and converts that prediction into expected gain. ",
-    "The latest-year EOY baseline R-squared is **", latest_eoy_r2,
-    "** and the latest-year expected-gain RMSE is **", latest_gain_rmse, "** points."
+    "It predicts **score gain directly** using a ", selected_family,
+    " specification. The selected tuning choice is ", selected_tuned_text, ". ",
+    "The latest-year expected-gain RMSE is **", latest_gain_rmse,
+    "** points and the latest-year MAE is **", latest_gain_mae, "** points."
   ),
   "",
   paste0(
     "The latest-year gain R-squared is **", latest_gain_r2,
-    "**. That is not treated as a failure condition because individual score gain is noisy after starting score is removed. ",
-    "The workflow uses the model to create a fair baseline, then makes decisions from aggregate teacher, course, and section residuals with bootstrap uncertainty checks."
+    "**; EOY R-squared is **", latest_eoy_r2,
+    "** and is reported only as secondary context. EOY is easier to predict because BOY score mechanically explains much of final score. ",
+    "The workflow uses the direct-growth model to create a fair expected-growth baseline, then makes decisions from aggregate teacher, course, and section residuals with bootstrap uncertainty checks."
   ),
   "",
   markdown_table(decision_counts),
@@ -534,11 +620,12 @@ report_lines <- c(
   "## Plain-English Method",
   "",
   "1. Build a paired BOY/EOY growth extract from public-safe assessment records.",
-  "2. Train candidate expected-growth models on prior years only.",
-  "3. Select the operating baseline using leave-one-year-out temporal validation, with repeated CV and bootstrap checks as supporting evidence.",
-  "4. Score the latest year against that prior-year baseline.",
-  "5. Aggregate observed-minus-expected growth by teacher, course, and section.",
-  "6. Flag review targets only when the gap is large enough to matter and the uncertainty check supports follow-up.",
+  "2. Define the business outcome as score gain: EOY score minus BOY score.",
+  "3. Train candidate expected-growth models on prior years only, including parametric, smooth, tree-based, ensemble, and excluded leakage-check specifications.",
+  "4. Select the operating baseline using leave-one-year-out temporal validation, with repeated CV and bootstrap checks as supporting evidence.",
+  "5. Score the latest year against that prior-year baseline.",
+  "6. Aggregate observed-minus-expected growth by teacher, course, and section.",
+  "7. Flag review targets only when the gap is large enough to matter and the uncertainty check supports follow-up.",
   "",
   paste0(
     "This design separates the prediction problem from the decision problem. ",
@@ -551,7 +638,7 @@ report_lines <- c(
   paste0("2. The training window is ", training_years, "; the action year is ", action_year, "."),
   paste0("3. The average raw gain across the full extract is ", mean_gain, " points; the latest-year raw gain is ", latest_gain, " points."),
   paste0("4. The model search tested ", candidate_count, " candidate baselines across parametric, nonlinear, ensemble, and leakage-check families."),
-  paste0("5. The selected baseline has temporal expected-gain RMSE ", temporal_gain_rmse, " and latest-year expected-gain RMSE ", latest_gain_rmse, "."),
+  paste0("5. The selected direct-growth baseline has temporal expected-gain RMSE ", temporal_gain_rmse, ", temporal MAE ", temporal_gain_mae, ", and latest-year expected-gain RMSE ", latest_gain_rmse, "."),
   "6. Teacher, course, and section flags are audit priorities. They are not automatic personnel ratings or causal claims.",
   "",
   "## Data Audit",
@@ -567,16 +654,28 @@ report_lines <- c(
   paste0(
     "The model search used ", training_records, " prior-year pairs and held out ",
     action_records, " latest-year pairs for action-year evaluation. ",
-    "The primary selection metric is temporal expected-gain RMSE, not latest-year performance, so the system does not choose a model by looking at the year it later reviews."
+    "The primary selection metric is leave-one-year-out temporal expected-gain RMSE, not latest-year performance, so the system does not choose a model by looking at the year it later reviews."
   ),
   "",
   paste0(
-    "The best raw temporal RMSE was **", best_temporal_row$`Temporal RMSE`,
+    "The best eligible direct-growth temporal RMSE was **", best_temporal_row$`Temporal RMSE`,
     "** from **", best_temporal_row$Model, "**. ",
     "The selected model's temporal RMSE was **", selected_row$`Temporal RMSE`,
     "**, a difference of ", selection_delta,
-    " points. The simpler model was selected under the pre-specified rule because the difference was not operationally meaningful."
+    " points. Because that difference is below the 0.01-point practical tolerance, the selected model is the operating baseline because it has the strongest repeated-CV RMSE among the temporally tied direct-growth candidates."
   ),
+  "",
+  overall_context,
+  "",
+  "The model-search guardrails were:",
+  "",
+  "- Use direct BOY/EOY score gain as the operating target because that is the stakeholder performance metric.",
+  "- Select by temporal-CV RMSE so the baseline is judged on year-to-year generalization.",
+  "- Use repeated-CV RMSE as the tie-breaker when temporal-CV RMSE differs by less than 0.01 points.",
+  "- Keep teacher, course, and section identifiers out of the operating baseline because those are the review slices.",
+  "- Report EOY R-squared only as context because final score is mechanically easier to predict than growth.",
+  "",
+  markdown_table(family_summary_report),
   "",
   markdown_table(shape_review_report),
   "",
@@ -586,10 +685,18 @@ report_lines <- c(
     "Full model artifacts: ",
     artifact_ref("reports/growth_model_comparison_display.csv"),
     ", ",
+    artifact_ref("reports/growth_model_search_grid.csv"),
+    ", ",
+    artifact_ref("reports/growth_model_family_summary.csv"),
+    ", ",
+    artifact_ref("reports/growth_model_selection_rationale.csv"),
+    ", ",
     artifact_ref("reports/model_temporal_validation.csv"),
     ", and ",
     artifact_ref("reports/model_bootstrap_validation.csv"), "."
   ),
+  "",
+  "![Model search by family and tuned candidate](../figures/growth_model_search.png)",
   "",
   "![Expected-growth model comparison](../figures/growth_model_comparison.png)",
   "",
@@ -724,8 +831,10 @@ executive_lines <- c(
   paste0(
     "**Baseline:** ", selected_model,
     " selected from ", candidate_count,
-    " candidates. Temporal expected-gain RMSE is ", temporal_gain_rmse,
-    "; latest-year EOY R-squared is ", latest_eoy_r2, "."
+    " candidates using direct-growth temporal validation. Temporal expected-gain RMSE is ",
+    temporal_gain_rmse, "; latest-year expected-gain RMSE is ",
+    latest_gain_rmse, "; latest-year EOY R-squared is ", latest_eoy_r2,
+    " for context."
   ),
   "",
   paste0(
@@ -762,7 +871,7 @@ model_card_lines <- c(
   "",
   paste0(
     "Selected baseline: ", selected_model,
-    ". Candidate families include direct gain models, predicted EOY models, interaction surfaces, GAM smooths, random forests, gradient boosting, and an excluded teacher/course ID leakage check."
+    ". The operating target is direct BOY/EOY score gain. Candidate families include linear baselines, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regression trees, random forests, gradient boosting, validation ensembles, EOY-derived benchmarks, and an excluded teacher/course ID leakage check."
   ),
   "",
   "## Validation",

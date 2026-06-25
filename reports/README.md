@@ -18,6 +18,11 @@ Other useful report files:
   latest-year expected-growth model comparison.
 - `growth_model_comparison_display.csv`: reviewer-facing model-comparison
   table.
+- `growth_model_search_grid.csv`: full candidate grid with family, tuning,
+  eligibility, validation metrics, AIC/BIC where available, and leakage status.
+- `growth_model_family_summary.csv`: best candidate by model family.
+- `growth_model_selection_rationale.csv`: selected baseline and decision-rule
+  summary.
 - `growth_final_metrics.csv`: selected model and validation summary.
 - `model_temporal_validation.csv`: leave-one-year-out validation results used
   for baseline selection.

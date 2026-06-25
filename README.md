@@ -50,8 +50,9 @@ public-safety notes.
   BOY/EOY growth table
 - Paired section improvement analysis and confidence intervals
 - Adjusted expected-growth modeling in R
-- Candidate-family comparison across direct-gain, predicted-EOY, interaction,
-  GAM, random-forest, gradient-boosting, and leakage-check specifications
+- Candidate-family comparison across direct-growth linear, polynomial,
+  interaction, cyclic, GAM, regression-tree, random-forest, gradient-boosting,
+  validation-ensemble, EOY-derived benchmark, and leakage-check specifications
 - Repeated cross-validation plus leave-one-year-out temporal validation
 - Latest-year action evaluation, bootstrap intervals, and residual diagnostics
 - Reliability-weighted teacher/course/section decision flags
@@ -74,9 +75,10 @@ public-safety notes.
 
 ## Quick Start
 
-The core build uses R and `make`. If `mgcv`, `randomForest`, or `gbm` are
-installed, the model search includes GAM, random-forest, and gradient-boosting
-candidates; otherwise those optional families are skipped and documented.
+The core build uses R and `make`. If `mgcv`, `rpart`, `randomForest`, or `gbm`
+are installed, the model search includes GAM, regression-tree, random-forest,
+and gradient-boosting candidates; otherwise those optional families are skipped
+and documented.
 
 ```bash
 cd /home/grant/repos/public/statistical-risk-modeling-r
@@ -145,6 +147,9 @@ The generated evidence packet includes:
 - `docs/model-card.md`
 - `reports/growth_model_comparison.csv`
 - `reports/growth_model_comparison_display.csv`
+- `reports/growth_model_search_grid.csv`
+- `reports/growth_model_family_summary.csv`
+- `reports/growth_model_selection_rationale.csv`
 - `reports/growth_final_metrics.csv`
 - `reports/intervention_targets.csv`
 - `reports/latest_teacher_review.csv`
@@ -183,7 +188,7 @@ make validate   # checks public-safety rules
 Install the optional modeling/reporting packages for the full portfolio build:
 
 ```r
-install.packages(c("mgcv", "randomForest", "gbm", "rmarkdown", "knitr"))
+install.packages(c("mgcv", "rpart", "randomForest", "gbm", "rmarkdown", "knitr"))
 ```
 
 Then run:
