@@ -1487,11 +1487,50 @@ shrinkage_decision <- function(effect, lower, upper, q_value, n, min_n,
   "In range"
 }
 
+empty_shrinkage_review <- function() {
+  data.frame(
+    Level = character(),
+    Target = character(),
+    N = integer(),
+    RawGap = numeric(),
+    ShrunkenGap = numeric(),
+    SE = numeric(),
+    CI_Lower = numeric(),
+    CI_Upper = numeric(),
+    P_Value = numeric(),
+    Q_Value = numeric(),
+    Decision = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+empty_shrinkage_review_display <- function() {
+  data.frame(
+    Level = character(),
+    Target = character(),
+    N = integer(),
+    Raw_gap = character(),
+    Shrunken_gap = character(),
+    CI_95 = character(),
+    P_value = character(),
+    Q_value = character(),
+    Decision = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
 make_shrinkage_rows <- function(fit, data, group_var, level, min_n) {
   random_effects <- lme4::ranef(fit, condVar = TRUE)[[group_var]]
+  if (is.null(random_effects) || nrow(random_effects) == 0) {
+    return(empty_shrinkage_review())
+  }
   effects <- random_effects[["(Intercept)"]]
   effect_names <- rownames(random_effects)
   post_var <- attr(random_effects, "postVar")
+  if (length(effects) == 0 || length(effect_names) == 0 ||
+      is.null(post_var) || length(post_var) == 0) {
+    return(empty_shrinkage_review())
+  }
   se <- sqrt(post_var[1, 1, seq_along(effects)])
   group_counts <- table(data[[group_var]])
   raw_gap <- tapply(data$adjusted_growth_residual, data[[group_var]], mean)
@@ -1529,20 +1568,7 @@ shrinkage_status <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
-shrinkage_review <- data.frame(
-  Level = character(),
-  Target = character(),
-  N = integer(),
-  RawGap = numeric(),
-  ShrunkenGap = numeric(),
-  SE = numeric(),
-  CI_Lower = numeric(),
-  CI_Upper = numeric(),
-  P_Value = numeric(),
-  Q_Value = numeric(),
-  Decision = character(),
-  stringsAsFactors = FALSE
-)
+shrinkage_review <- empty_shrinkage_review()
 
 if (dependency_status$Installed[dependency_status$Package == "lme4"]) {
   shrinkage_fit <- try(
@@ -1573,11 +1599,13 @@ if (dependency_status$Installed[dependency_status$Package == "lme4"]) {
       drop = FALSE
     ]
     shrinkage_status$Value[shrinkage_status$Measure == "Mixed-effects shrinkage model"] <-
-      ifelse(
-        lme4::isSingular(shrinkage_fit),
-        "Run on latest-year action data; singular fit, use as supporting shrinkage check",
+      if (nrow(shrinkage_review) == 0) {
+        "Run on latest-year action data; no shrinkage rows returned"
+      } else if (lme4::isSingular(shrinkage_fit)) {
+        "Run on latest-year action data; singular fit, use as supporting shrinkage check"
+      } else {
         "Run on latest-year action data"
-      )
+      }
   } else {
     shrinkage_status$Value[shrinkage_status$Measure == "Mixed-effects shrinkage model"] <-
       "Skipped: lme4 model did not converge"
@@ -2406,22 +2434,26 @@ model_strength <- data.frame(
   stringsAsFactors = FALSE
 )
 
-shrinkage_review_display <- data.frame(
-  Level = shrinkage_review$Level,
-  Target = shrinkage_review$Target,
-  N = shrinkage_review$N,
-  Raw_gap = format_num(shrinkage_review$RawGap, 2),
-  Shrunken_gap = format_num(shrinkage_review$ShrunkenGap, 2),
-  CI_95 = paste0(
-    format_num(shrinkage_review$CI_Lower, 2),
-    " to ",
-    format_num(shrinkage_review$CI_Upper, 2)
-  ),
-  P_value = format_p(shrinkage_review$P_Value),
-  Q_value = format_p(shrinkage_review$Q_Value),
-  Decision = shrinkage_review$Decision,
-  stringsAsFactors = FALSE
-)
+if (nrow(shrinkage_review) > 0) {
+  shrinkage_review_display <- data.frame(
+    Level = shrinkage_review$Level,
+    Target = shrinkage_review$Target,
+    N = shrinkage_review$N,
+    Raw_gap = format_num(shrinkage_review$RawGap, 2),
+    Shrunken_gap = format_num(shrinkage_review$ShrunkenGap, 2),
+    CI_95 = paste0(
+      format_num(shrinkage_review$CI_Lower, 2),
+      " to ",
+      format_num(shrinkage_review$CI_Upper, 2)
+    ),
+    P_value = format_p(shrinkage_review$P_Value),
+    Q_value = format_p(shrinkage_review$Q_Value),
+    Decision = shrinkage_review$Decision,
+    stringsAsFactors = FALSE
+  )
+} else {
+  shrinkage_review_display <- empty_shrinkage_review_display()
+}
 
 final_metrics <- data.frame(
   Metric = c(
