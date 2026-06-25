@@ -1,0 +1,7 @@
+"Diagnostic","Value","DisplayValue"
+"Individual gain SD",5.07873250368761,"5.079"
+"Student mean-gain R-squared",0.208063432335432,"0.208"
+"Section mean-gain R-squared",0.266375955898324,"0.266"
+"Course mean-gain R-squared",0.545863009516812,"0.546"
+"Teacher mean-gain R-squared",0.637869753092237,"0.638"
+"Selected train-validation R-squared gap",0.0446633624697025,"0.045"

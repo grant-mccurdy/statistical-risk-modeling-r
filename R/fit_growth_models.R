@@ -76,18 +76,68 @@ target_label <- function(target) {
 
 method_label <- function(method) {
   labels <- c(
+    naive = "Naive benchmark",
     lm = "Linear model",
+    glmnet = "Elastic net",
     gam = "GAM",
     rf = "Random forest",
+    ranger = "Ranger forest",
     gbm = "Gradient boosting",
+    earth = "MARS",
     rpart = "Regression tree",
-    ensemble = "Ensemble"
+    ensemble = "Ensemble",
+    stacked = "Stacked ensemble"
   )
   labels[[method]]
 }
 
+make_glmnet_matrix <- function(formula, data, columns = NULL) {
+  x <- model.matrix(formula, data = data)
+  if ("(Intercept)" %in% colnames(x)) {
+    x <- x[, colnames(x) != "(Intercept)", drop = FALSE]
+  }
+  if (!is.null(columns)) {
+    missing_cols <- setdiff(columns, colnames(x))
+    for (col in missing_cols) {
+      x <- cbind(x, 0)
+      colnames(x)[ncol(x)] <- col
+    }
+    extra_cols <- setdiff(colnames(x), columns)
+    if (length(extra_cols) > 0) {
+      x <- x[, setdiff(colnames(x), extra_cols), drop = FALSE]
+    }
+    x <- x[, columns, drop = FALSE]
+  }
+  x
+}
+
+align_newdata_levels <- function(xlevels, newdata) {
+  if (is.null(xlevels) || length(xlevels) == 0) {
+    return(newdata)
+  }
+  for (feature in names(xlevels)) {
+    if (!feature %in% names(newdata)) {
+      next
+    }
+    allowed_levels <- xlevels[[feature]]
+    if (length(allowed_levels) == 0) {
+      next
+    }
+    values <- as.character(newdata[[feature]])
+    unseen <- !is.na(values) & !values %in% allowed_levels
+    if (any(unseen)) {
+      values[unseen] <- allowed_levels[1]
+    }
+    newdata[[feature]] <- factor(values, levels = allowed_levels)
+  }
+  newdata
+}
+
 fit_candidate <- function(spec, data, seed = 20260623) {
   set.seed(seed)
+  if (spec$method == "naive") {
+    return(list(value = mean(data[[spec$target]], na.rm = TRUE)))
+  }
   if (spec$method == "ensemble") {
     member_fits <- lapply(seq_along(spec$fit_args$members), function(i) {
       fit_candidate(
@@ -102,8 +152,59 @@ fit_candidate <- function(spec, data, seed = 20260623) {
       weights = spec$fit_args$weights
     ))
   }
+  if (spec$method == "stacked") {
+    members <- spec$fit_args$members
+    meta_names <- paste0("member_", seq_along(members))
+    folds <- make_random_folds(nrow(data), spec$fit_args$folds)
+    oof <- matrix(NA_real_, nrow = nrow(data), ncol = length(members))
+    colnames(oof) <- meta_names
+    for (member_id in seq_along(members)) {
+      member_spec <- members[[member_id]]
+      for (fold_id in seq_len(spec$fit_args$folds)) {
+        train_data <- data[folds != fold_id, , drop = FALSE]
+        test_data <- data[folds == fold_id, , drop = FALSE]
+        member_fit <- fit_candidate(
+          member_spec,
+          train_data,
+          seed = seed + member_id * 100 + fold_id
+        )
+        oof[folds == fold_id, member_id] <- predict_expected_gain(
+          member_fit,
+          member_spec,
+          test_data
+        )
+      }
+    }
+    meta_data <- data.frame(score_gain = data$score_gain, oof, check.names = FALSE)
+    meta_model <- lm(score_gain ~ ., data = meta_data)
+    member_fits <- lapply(seq_along(members), function(i) {
+      fit_candidate(members[[i]], data, seed = seed + i * 17)
+    })
+    return(list(
+      meta_model = meta_model,
+      member_fits = member_fits,
+      member_specs = members,
+      meta_names = meta_names
+    ))
+  }
   if (spec$method == "lm") {
     return(lm(spec$formula, data = data))
+  }
+  if (spec$method == "glmnet") {
+    x <- make_glmnet_matrix(spec$formula, data)
+    model <- glmnet::cv.glmnet(
+      x = x,
+      y = data[[spec$target]],
+      alpha = spec$fit_args$alpha,
+      nfolds = min(5, nrow(data)),
+      standardize = TRUE
+    )
+    return(list(
+      model = model,
+      formula = spec$formula,
+      columns = colnames(x),
+      alpha = spec$fit_args$alpha
+    ))
   }
   if (spec$method == "gam") {
     return(mgcv::gam(spec$formula, data = data, method = "REML"))
@@ -116,6 +217,17 @@ fit_candidate <- function(spec, data, seed = 20260623) {
       nodesize = spec$fit_args$nodesize,
       mtry = spec$fit_args$mtry,
       importance = FALSE
+    ))
+  }
+  if (spec$method == "ranger") {
+    return(ranger::ranger(
+      spec$formula,
+      data = data,
+      num.trees = spec$fit_args$num_trees,
+      mtry = spec$fit_args$mtry,
+      min.node.size = spec$fit_args$min_node_size,
+      respect.unordered.factors = "order",
+      seed = seed
     ))
   }
   if (spec$method == "rpart") {
@@ -144,17 +256,48 @@ fit_candidate <- function(spec, data, seed = 20260623) {
       verbose = FALSE
     ))
   }
+  if (spec$method == "earth") {
+    return(earth::earth(
+      spec$formula,
+      data = data,
+      degree = spec$fit_args$degree,
+      nprune = spec$fit_args$nprune
+    ))
+  }
   stop("Unsupported model method: ", spec$method)
 }
 
 predict_target_value <- function(fit, spec, newdata) {
+  if (spec$method == "naive") {
+    return(rep(fit$value, nrow(newdata)))
+  }
+  if (spec$method == "glmnet") {
+    x <- make_glmnet_matrix(fit$formula, newdata, fit$columns)
+    return(as.numeric(predict(fit$model, newx = x, s = "lambda.min")))
+  }
   if (spec$method == "gbm") {
+    newdata <- align_newdata_levels(fit$xlevels, newdata)
     return(as.numeric(suppressWarnings(predict(
       fit,
       newdata = newdata,
       n.trees = spec$fit_args$n_trees
     ))))
   }
+  if (spec$method == "rf") {
+    newdata <- align_newdata_levels(fit$forest$xlevels, newdata)
+    return(as.numeric(predict(fit, newdata = newdata)))
+  }
+  if (spec$method == "ranger") {
+    if (!is.null(fit$forest$covariate.levels)) {
+      newdata <- align_newdata_levels(fit$forest$covariate.levels, newdata)
+    }
+    return(as.numeric(predict(fit, data = newdata)$predictions))
+  }
+  if (spec$method == "earth") {
+    newdata <- align_newdata_levels(fit$xlevels, newdata)
+    return(as.numeric(predict(fit, newdata = newdata)))
+  }
+  newdata <- align_newdata_levels(fit$xlevels, newdata)
   as.numeric(suppressWarnings(predict(fit, newdata = newdata)))
 }
 
@@ -173,6 +316,21 @@ predict_expected_gain <- function(fit, spec, newdata) {
     weights <- fit$weights / sum(fit$weights)
     return(as.numeric(member_predictions %*% weights))
   }
+  if (spec$method == "stacked") {
+    member_predictions <- mapply(
+      function(member_fit, member_spec) {
+        predict_expected_gain(member_fit, member_spec, newdata)
+      },
+      fit$member_fits,
+      fit$member_specs
+    )
+    if (is.null(dim(member_predictions))) {
+      member_predictions <- matrix(member_predictions, ncol = length(fit$member_specs))
+    }
+    meta_data <- as.data.frame(member_predictions)
+    names(meta_data) <- fit$meta_names
+    return(as.numeric(predict(fit$meta_model, newdata = meta_data)))
+  }
   target_prediction <- predict_target_value(fit, spec, newdata)
   if (spec$target == "eoy_score") {
     return(target_prediction - newdata$boy_score)
@@ -181,7 +339,7 @@ predict_expected_gain <- function(fit, spec, newdata) {
 }
 
 predict_expected_eoy <- function(fit, spec, newdata) {
-  if (spec$method == "ensemble") {
+  if (spec$method %in% c("ensemble", "stacked")) {
     return(newdata$boy_score + predict_expected_gain(fit, spec, newdata))
   }
   if (spec$target == "eoy_score") {
@@ -272,7 +430,12 @@ run_temporal_validation <- function(data, specs, years, seed = 20260623) {
   counter <- 1
 
   for (validation_year in years) {
-    train_data <- data[data$school_year != validation_year, , drop = FALSE]
+    validation_position <- match(validation_year, years)
+    if (is.na(validation_position) || validation_position <= 1) {
+      next
+    }
+    prior_years <- years[seq_len(validation_position - 1)]
+    train_data <- data[data$school_year %in% prior_years, , drop = FALSE]
     test_data <- data[data$school_year == validation_year, , drop = FALSE]
     for (spec in specs) {
       fit <- fit_candidate(
@@ -288,6 +451,7 @@ run_temporal_validation <- function(data, specs, years, seed = 20260623) {
         Method = method_label(spec$method),
         Role = spec$role,
         ValidationYear = validation_year,
+        TrainingYears = paste(prior_years, collapse = ", "),
         N = nrow(test_data),
         RMSE = metrics$Gain_RMSE,
         MAE = metrics$Gain_MAE,
@@ -486,7 +650,78 @@ training_years <- setdiff(school_years, action_year)
 train_data <- growth[growth$school_year %in% training_years, , drop = FALSE]
 action_data <- growth[growth$school_year == action_year, , drop = FALSE]
 
+history_composition_formula <- score_gain ~ grade_level + course_track +
+  attendance_category + attendance_probability + boy_score_z +
+  I(boy_score_z^2) + boy_readiness_z + I(boy_readiness_z^2) +
+  has_prior_year + prior_score_gain_z + prior_boy_score_z +
+  prior_readiness_gain + prior_attendance_probability +
+  student_prior_year_count + student_prior_mean_gain_z +
+  student_prior_gain_sd_z + student_prior_gain_trend_z +
+  student_prior_mean_eoy_z + student_prior_attendance_mean +
+  section_size + section_boy_mean_z + section_boy_sd + section_readiness_mean +
+  section_attendance_mean + section_prior_gain_mean_z +
+  section_student_prior_mean_gain_z + section_student_prior_gain_sd_z +
+  section_pct_below_45 + section_pct_45_to_60 + section_pct_at_risk +
+  section_pct_high_absence + school_year_offset + annual_sin + annual_cos
+
+history_interaction_formula <- score_gain ~ grade_level + course_track +
+  attendance_category + attendance_probability + boy_score_z +
+  I(boy_score_z^2) + boy_readiness_z + I(boy_readiness_z^2) +
+  has_prior_year + prior_score_gain_z + prior_boy_score_z +
+  prior_readiness_gain + prior_attendance_probability +
+  student_prior_year_count + student_prior_mean_gain_z +
+  student_prior_gain_sd_z + student_prior_gain_trend_z +
+  student_prior_mean_eoy_z + student_prior_attendance_mean +
+  section_size + section_boy_mean_z + section_boy_sd + section_readiness_mean +
+  section_attendance_mean + section_prior_gain_mean_z +
+  section_student_prior_mean_gain_z + section_student_prior_gain_sd_z +
+  section_pct_below_45 + section_pct_45_to_60 + section_pct_at_risk +
+  section_pct_high_absence + school_year_offset + annual_sin + annual_cos +
+  boy_score_z:course_track + prior_score_gain_z:course_track +
+  student_prior_mean_gain_z:course_track +
+  student_prior_gain_trend_z:attendance_category +
+  section_boy_mean_z:course_track + attendance_probability:course_track +
+  section_pct_at_risk:attendance_category
+
+feature_discovery_formula <- score_gain ~ grade_level + course_track +
+  attendance_category + attendance_probability + boy_score_z +
+  I(boy_score_z^2) + I(boy_score_z^3) + boy_readiness_z +
+  I(boy_readiness_z^2) + boy_below_45 + boy_45_to_60 + boy_above_60 +
+  has_prior_year + prior_score_gain_z + prior_boy_score_z +
+  student_prior_year_count + student_prior_mean_gain_z +
+  student_prior_gain_sd_z + student_prior_gain_trend_z +
+  student_prior_mean_eoy_z + student_prior_attendance_mean +
+  section_size + section_boy_mean_z + section_boy_sd +
+  section_readiness_mean + section_attendance_mean +
+  section_prior_gain_mean_z + section_student_prior_mean_gain_z +
+  section_student_prior_gain_sd_z + section_pct_below_45 +
+  section_pct_45_to_60 + section_pct_at_risk + section_pct_high_absence +
+  school_year_offset + annual_sin + annual_cos +
+  boy_score_z:course_track + student_prior_mean_gain_z:course_track +
+  student_prior_gain_trend_z:course_track + attendance_probability:course_track +
+  section_pct_at_risk:course_track + section_boy_mean_z:student_prior_mean_gain_z
+
+future_planning_formula <- update(
+  feature_discovery_formula,
+  . ~ . + teacher_prior_mean_gain_z + teacher_prior_gain_sd +
+    teacher_prior_gain_trend + course_prior_mean_gain_z + course_prior_gain_sd +
+    course_prior_gain_trend
+)
+
 candidate_specs <- list(
+  make_spec(
+    "Naive prior-year mean growth",
+    "score_gain",
+    "naive",
+    score_gain ~ 1,
+    role = "Naive benchmark",
+    family = "Naive baseline",
+    complexity = "Training mean",
+    parameters = 1,
+    tuned_parameters = "training-year mean score gain",
+    selection_eligible = FALSE,
+    leakage_status = "Public-safe benchmark"
+  ),
   make_spec(
     "Growth linear benchmark",
     "score_gain",
@@ -510,6 +745,49 @@ candidate_specs <- list(
     complexity = "Readiness adjusted",
     parameters = 13,
     tuned_parameters = "adds BOY readiness"
+  ),
+  make_spec(
+    "Growth history-composition model",
+    "score_gain",
+    "lm",
+    history_composition_formula,
+    family = "Parametric history/composition",
+    complexity = "Multi-year student history + section mix",
+    parameters = 38,
+    tuned_parameters = "multi-year student history and BOY section composition"
+  ),
+  make_spec(
+    "Growth history interaction model",
+    "score_gain",
+    "lm",
+    history_interaction_formula,
+    family = "Parametric history/composition",
+    complexity = "History/composition interactions",
+    parameters = 48,
+    tuned_parameters = "history and section composition interactions"
+  ),
+  make_spec(
+    "Growth feature discovery model",
+    "score_gain",
+    "lm",
+    feature_discovery_formula,
+    family = "Feature-engineered parametric",
+    complexity = "Expanded transformations and interactions",
+    parameters = 56,
+    tuned_parameters = "thresholds, polynomial terms, multi-year history, and interaction search"
+  ),
+  make_spec(
+    "Growth future planning benchmark",
+    "score_gain",
+    "lm",
+    future_planning_formula,
+    role = "Future planning benchmark",
+    family = "Lagged teacher/course context",
+    complexity = "Adds lagged teacher/course context",
+    parameters = 62,
+    tuned_parameters = "future-only lagged teacher/course context",
+    selection_eligible = FALSE,
+    leakage_status = "Excluded from judgment baseline: includes lagged teacher/course review context"
   ),
   make_spec(
     "Growth polynomial degree 2",
@@ -536,6 +814,22 @@ candidate_specs <- list(
     complexity = "Degree 3",
     parameters = 17,
     tuned_parameters = "degree=3"
+  ),
+  make_spec(
+    "Growth spline history model",
+    "score_gain",
+    "lm",
+    score_gain ~ grade_level + course_track + attendance_category +
+      splines::ns(boy_score, df = 4) + splines::ns(boy_readiness, df = 4) +
+      splines::ns(student_prior_mean_gain, df = 4) +
+      splines::ns(section_boy_mean, df = 4) +
+      splines::ns(section_student_prior_mean_gain, df = 4) +
+      attendance_probability + section_pct_at_risk + section_pct_high_absence +
+      school_year_offset + annual_sin + annual_cos,
+    family = "Natural spline regression",
+    complexity = "Spline df=4",
+    parameters = 34,
+    tuned_parameters = "natural splines for BOY, readiness, history, and section mix"
   ),
   make_spec(
     "Growth interaction model",
@@ -598,19 +892,23 @@ candidate_specs <- list(
 )
 
 dependency_status <- data.frame(
-  Package = c("mgcv", "randomForest", "gbm", "rpart"),
+  Package = c("mgcv", "randomForest", "ranger", "gbm", "rpart", "glmnet", "earth", "lme4"),
   Installed = c(
     requireNamespace("mgcv", quietly = TRUE),
     requireNamespace("randomForest", quietly = TRUE),
+    requireNamespace("ranger", quietly = TRUE),
     requireNamespace("gbm", quietly = TRUE),
-    requireNamespace("rpart", quietly = TRUE)
+    requireNamespace("rpart", quietly = TRUE),
+    requireNamespace("glmnet", quietly = TRUE),
+    requireNamespace("earth", quietly = TRUE),
+    requireNamespace("lme4", quietly = TRUE)
   ),
   stringsAsFactors = FALSE
 )
 
 if (dependency_status$Installed[dependency_status$Package == "mgcv"]) {
   s <- mgcv::s
-  gam_ks <- c(4, 8)
+  gam_ks <- c(4)
   candidate_specs <- c(
     candidate_specs,
     lapply(gam_ks, function(k) {
@@ -622,13 +920,19 @@ if (dependency_status$Installed[dependency_status$Package == "mgcv"]) {
           "score_gain ~ grade_level + course_track + attendance_category + ",
           "s(boy_score, k = ", k, ") + ",
           "s(boy_readiness, k = ", k, ") + ",
+          "s(prior_score_gain, k = 4) + ",
+          "s(student_prior_mean_gain, k = 4) + ",
+          "student_prior_gain_trend + ",
+          "s(section_boy_mean, k = 4) + ",
+          "s(section_prior_gain_mean, k = 4) + ",
+          "s(section_student_prior_mean_gain, k = 4) + ",
           "s(attendance_probability, k = 4) + ",
-          "s(school_year_offset, k = 5) + annual_sin + annual_cos"
+          "school_year_offset + annual_sin + annual_cos"
         )),
         family = "Semi-parametric GAM",
         complexity = paste0("Smooth k=", k),
-        parameters = 3 * k + 9,
-        tuned_parameters = paste0("k=", k)
+        parameters = 3 * k + 24,
+        tuned_parameters = paste0("k=", k, "; adds history/composition smooths")
       )
     })
   )
@@ -636,8 +940,16 @@ if (dependency_status$Installed[dependency_status$Package == "mgcv"]) {
 
 tree_formula_gain <- score_gain ~ grade_level + course_track +
   attendance_category + attendance_probability + boy_score + boy_readiness +
-  boy_below_45 + boy_45_to_60 + boy_above_60 + school_year_offset +
-  annual_sin + annual_cos
+  boy_below_45 + boy_45_to_60 + boy_above_60 + has_prior_year +
+  prior_score_gain + prior_boy_score + prior_readiness_gain +
+  prior_attendance_probability + student_prior_year_count +
+  student_prior_mean_gain + student_prior_gain_sd + student_prior_gain_trend +
+  student_prior_mean_eoy + student_prior_attendance_mean + section_size +
+  section_boy_mean + section_boy_sd + section_readiness_mean +
+  section_attendance_mean + section_prior_gain_mean +
+  section_student_prior_mean_gain + section_student_prior_gain_sd +
+  section_pct_below_45 + section_pct_45_to_60 + section_pct_at_risk +
+  section_pct_high_absence + school_year_offset + annual_sin + annual_cos
 
 tree_grid <- list(
   list(cp = 0.010, minbucket = 8, maxdepth = 5),
@@ -670,8 +982,7 @@ if (dependency_status$Installed[dependency_status$Package == "rpart"]) {
 
 if (dependency_status$Installed[dependency_status$Package == "randomForest"]) {
   rf_grid <- list(
-    list(ntree = 200, nodesize = 10, mtry = 4),
-    list(ntree = 300, nodesize = 5, mtry = 7)
+    list(ntree = 100, nodesize = 10, mtry = 4)
   )
   candidate_specs <- c(
     candidate_specs,
@@ -696,10 +1007,37 @@ if (dependency_status$Installed[dependency_status$Package == "randomForest"]) {
   )
 }
 
+if (dependency_status$Installed[dependency_status$Package == "ranger"]) {
+  ranger_grid <- list(
+    list(num_trees = 100, min_node_size = 8, mtry = 6)
+  )
+  candidate_specs <- c(
+    candidate_specs,
+    lapply(seq_along(ranger_grid), function(i) {
+      args <- ranger_grid[[i]]
+      make_spec(
+        paste0("Growth ranger forest ", i),
+        "score_gain",
+        "ranger",
+        tree_formula_gain,
+        family = "Non-parametric ranger forest",
+        complexity = paste0("Ranger grid ", i),
+        parameters = args$num_trees,
+        tuned_parameters = paste0(
+          "trees=", args$num_trees,
+          "; mtry=", args$mtry,
+          "; min_node_size=", args$min_node_size
+        ),
+        fit_args = args
+      )
+    })
+  )
+}
+
 if (dependency_status$Installed[dependency_status$Package == "gbm"]) {
   gbm_grid <- list(
-    list(n_trees = 300, interaction_depth = 2, shrinkage = 0.040, bag_fraction = 0.75, n_minobsinnode = 10),
-    list(n_trees = 600, interaction_depth = 3, shrinkage = 0.025, bag_fraction = 0.75, n_minobsinnode = 8)
+    list(n_trees = 150, interaction_depth = 2, shrinkage = 0.040, bag_fraction = 0.75, n_minobsinnode = 10),
+    list(n_trees = 250, interaction_depth = 3, shrinkage = 0.025, bag_fraction = 0.75, n_minobsinnode = 8)
   )
   candidate_specs <- c(
     candidate_specs,
@@ -720,6 +1058,57 @@ if (dependency_status$Installed[dependency_status$Package == "gbm"]) {
           "; minobs=", args$n_minobsinnode
         ),
         fit_args = args
+      )
+    })
+  )
+}
+
+if (dependency_status$Installed[dependency_status$Package == "earth"]) {
+  earth_grid <- list(
+    list(degree = 1, nprune = 18),
+    list(degree = 2, nprune = 28)
+  )
+  candidate_specs <- c(
+    candidate_specs,
+    lapply(seq_along(earth_grid), function(i) {
+      args <- earth_grid[[i]]
+      make_spec(
+        paste0("Growth MARS ", i),
+        "score_gain",
+        "earth",
+        tree_formula_gain,
+        family = "Adaptive spline MARS",
+        complexity = paste0("MARS grid ", i),
+        parameters = args$nprune,
+        tuned_parameters = paste0(
+          "degree=", args$degree,
+          "; nprune=", args$nprune
+        ),
+        fit_args = args
+      )
+    })
+  )
+}
+
+if (dependency_status$Installed[dependency_status$Package == "glmnet"]) {
+  glmnet_grid <- list(
+    list(alpha = 0.00, label = "ridge"),
+    list(alpha = 0.50, label = "elastic net"),
+    list(alpha = 1.00, label = "lasso")
+  )
+  candidate_specs <- c(
+    candidate_specs,
+    lapply(glmnet_grid, function(args) {
+      make_spec(
+        paste0("Growth ", args$label),
+        "score_gain",
+        "glmnet",
+        history_interaction_formula,
+        family = "Regularized regression",
+        complexity = args$label,
+        parameters = NA_integer_,
+        tuned_parameters = paste0("alpha=", format_num(args$alpha, 2)),
+        fit_args = list(alpha = args$alpha)
       )
     })
   )
@@ -757,20 +1146,106 @@ add_ensemble_candidate <- function(specs, name, member_names, weights, complexit
   )
 }
 
+add_stacked_candidate <- function(specs, name, member_names, complexity, folds = 3) {
+  spec_names <- vapply(specs, `[[`, character(1), "name")
+  member_names <- member_names[member_names %in% spec_names]
+  if (length(member_names) < 2) {
+    return(specs)
+  }
+  members <- lapply(member_names, function(member_name) {
+    specs[[match(member_name, spec_names)]]
+  })
+  parameters <- sum(vapply(members, function(member) {
+    ifelse(is.na(member$parameters), 1, member$parameters)
+  }, numeric(1)))
+  c(
+    specs,
+    list(make_spec(
+      name,
+      "score_gain",
+      "stacked",
+      score_gain ~ 1,
+      family = "Stacked validation ensemble",
+      complexity = complexity,
+      parameters = parameters,
+      tuned_parameters = paste0(
+        "members=",
+        paste(member_names, collapse = " + "),
+        "; internal folds=",
+        folds
+      ),
+      fit_args = list(members = members, folds = folds)
+    ))
+  )
+}
+
+select_operating_model <- function(model_comparison, temporal_tolerance = 0.01) {
+  selection_candidates <- model_comparison[
+    model_comparison$SelectionEligible &
+      model_comparison$Role == "Operational candidate" &
+      model_comparison$Target == "Direct growth",
+    ,
+    drop = FALSE
+  ]
+  best_temporal_rmse <- min(selection_candidates$Temporal_RMSE)
+  finalist_candidates <- selection_candidates[
+    selection_candidates$Temporal_RMSE <= best_temporal_rmse + temporal_tolerance,
+    ,
+    drop = FALSE
+  ]
+  finalist_candidates <- finalist_candidates[
+    order(
+      finalist_candidates$CV_RMSE,
+      finalist_candidates$Temporal_RMSE,
+      -finalist_candidates$Temporal_R2
+    ),
+    ,
+    drop = FALSE
+  ]
+  list(
+    selected_model_name = finalist_candidates$Model[1],
+    best_temporal_rmse = best_temporal_rmse,
+    finalists = finalist_candidates
+  )
+}
+
 candidate_specs <- add_ensemble_candidate(
   candidate_specs,
   "Growth ensemble balanced",
-  c("Growth gradient boosting 1", "Growth GAM k4", "Growth polynomial degree 3"),
-  c(1, 1, 1),
-  "Equal-weight GBM/GAM/polynomial blend"
+  c("Growth gradient boosting 1", "Growth GAM k4", "Growth elastic net", "Growth history-composition model"),
+  c(1, 1, 1, 1),
+  "Equal-weight GBM/GAM/elastic-net/history blend"
 )
 
 candidate_specs <- add_ensemble_candidate(
   candidate_specs,
   "Growth ensemble nonlinear weighted",
-  c("Growth gradient boosting 1", "Growth GAM k4", "Growth polynomial degree 3"),
-  c(2, 1, 1),
-  "GBM-weighted nonlinear blend"
+  c("Growth gradient boosting 1", "Growth GAM k4", "Growth elastic net", "Growth history-composition model"),
+  c(2, 1, 1, 1),
+  "GBM-weighted nonlinear/history blend"
+)
+
+candidate_specs <- add_ensemble_candidate(
+  candidate_specs,
+  "Growth ensemble discovery weighted",
+  c(
+    "Growth gradient boosting 1",
+    "Growth ranger forest 1",
+    "Growth MARS 2",
+    "Growth GAM k4",
+    "Growth elastic net",
+    "Growth feature discovery model"
+  ),
+  c(2, 2, 1, 1, 1, 1),
+  "Validation blend across boosting, forests, MARS, GAM, elastic-net, and engineered features"
+)
+
+candidate_specs <- add_stacked_candidate(
+  candidate_specs,
+  "Growth stacked ensemble",
+  c("Growth gradient boosting 1", "Growth ranger forest 1", "Growth MARS 2", "Growth GAM k4", "Growth elastic net", "Growth feature discovery model"),
+  "Out-of-fold learned blend of nonlinear, regularized, and parametric models",
+  folds = 3
 )
 
 candidate_specs <- c(
@@ -829,6 +1304,96 @@ spec_metadata <- do.call(rbind, lapply(names(candidate_specs), function(model_na
   )
 }))
 
+run_nested_process_validation <- function(data, specs, years, metadata,
+                                          cv_folds = 5, seed = 20260623) {
+  rows <- list()
+  counter <- 1
+  for (validation_position in seq_along(years)) {
+    if (validation_position < 4) {
+      next
+    }
+    validation_year <- years[validation_position]
+    outer_train_years <- years[seq_len(validation_position - 1)]
+    outer_train_data <- data[data$school_year %in% outer_train_years, , drop = FALSE]
+    outer_test_data <- data[data$school_year == validation_year, , drop = FALSE]
+    inner_cv <- summarize_regression_cv(run_repeated_model_cv(
+      data = outer_train_data,
+      specs = specs,
+      k = min(cv_folds, nrow(outer_train_data)),
+      repeats = 1,
+      seed = seed + validation_position * 100
+    ))
+    inner_temporal <- summarize_temporal_validation(run_temporal_validation(
+      data = outer_train_data,
+      specs = specs,
+      years = outer_train_years,
+      seed = seed + validation_position * 100
+    ))
+    inner_comparison <- merge(
+      inner_cv,
+      inner_temporal,
+      by = c("Model", "Target", "Method", "Role")
+    )
+    inner_comparison <- merge(inner_comparison, metadata, by = "Model")
+    inner_selection <- select_operating_model(inner_comparison)
+    selected_spec <- specs[[inner_selection$selected_model_name]]
+    selected_fit <- fit_candidate(
+      selected_spec,
+      outer_train_data,
+      seed = seed + validation_position * 1000
+    )
+    selected_predictions <- predict_expected_gain(
+      selected_fit,
+      selected_spec,
+      outer_test_data
+    )
+    selected_metrics <- evaluate_expected_gain(outer_test_data, selected_predictions)
+
+    naive_spec <- specs[["Naive prior-year mean growth"]]
+    naive_fit <- fit_candidate(naive_spec, outer_train_data)
+    naive_predictions <- predict_expected_gain(naive_fit, naive_spec, outer_test_data)
+    naive_metrics <- evaluate_expected_gain(outer_test_data, naive_predictions)
+
+    rows[[counter]] <- data.frame(
+      ValidationYear = validation_year,
+      TrainingYears = paste(outer_train_years, collapse = ", "),
+      SelectedModel = inner_selection$selected_model_name,
+      N = nrow(outer_test_data),
+      Selected_RMSE = selected_metrics$Gain_RMSE,
+      Naive_RMSE = naive_metrics$Gain_RMSE,
+      RMSE_Improvement = naive_metrics$Gain_RMSE - selected_metrics$Gain_RMSE,
+      RMSE_Improvement_Pct = (naive_metrics$Gain_RMSE - selected_metrics$Gain_RMSE) /
+        naive_metrics$Gain_RMSE,
+      Selected_MAE = selected_metrics$Gain_MAE,
+      Naive_MAE = naive_metrics$Gain_MAE,
+      MAE_Improvement = naive_metrics$Gain_MAE - selected_metrics$Gain_MAE,
+      MAE_Improvement_Pct = (naive_metrics$Gain_MAE - selected_metrics$Gain_MAE) /
+        naive_metrics$Gain_MAE,
+      Selected_R2 = selected_metrics$Gain_R2,
+      stringsAsFactors = FALSE
+    )
+    counter <- counter + 1
+  }
+  if (length(rows) == 0) {
+    return(data.frame())
+  }
+  do.call(rbind, rows)
+}
+
+process_candidate_specs <- candidate_specs[vapply(
+  candidate_specs,
+  function(spec) spec$method %in% c("naive", "lm", "glmnet", "gam", "rpart"),
+  logical(1)
+)]
+
+process_validation <- run_nested_process_validation(
+  data = train_data,
+  specs = process_candidate_specs,
+  years = training_years,
+  metadata = spec_metadata[spec_metadata$Model %in% names(process_candidate_specs), ],
+  cv_folds = cv_folds
+)
+
 action_metrics <- do.call(rbind, lapply(names(candidate_specs), function(model_name) {
   spec <- candidate_specs[[model_name]]
   fit <- candidate_fits[[model_name]]
@@ -857,32 +1422,13 @@ action_metrics <- do.call(rbind, lapply(names(candidate_specs), function(model_n
 model_comparison <- merge(cv_summary, temporal_summary, by = c("Model", "Target", "Method", "Role"))
 model_comparison <- merge(model_comparison, action_metrics, by = "Model")
 model_comparison <- merge(model_comparison, spec_metadata, by = "Model")
+temporal_tolerance <- 0.01
 model_comparison <- model_comparison[order(model_comparison$Temporal_RMSE), ]
 
-selection_candidates <- model_comparison[
-  model_comparison$SelectionEligible &
-    model_comparison$Role == "Operational candidate" &
-    model_comparison$Target == "Direct growth",
-  ,
-  drop = FALSE
-]
-best_temporal_rmse <- min(selection_candidates$Temporal_RMSE)
-temporal_tolerance <- 0.01
-selection_candidates <- selection_candidates[
-  selection_candidates$Temporal_RMSE <= best_temporal_rmse + temporal_tolerance,
-  ,
-  drop = FALSE
-]
-selection_candidates <- selection_candidates[
-  order(
-    selection_candidates$CV_RMSE,
-    selection_candidates$Temporal_RMSE,
-    -selection_candidates$Temporal_R2
-  ),
-  ,
-  drop = FALSE
-]
-selected_model_name <- selection_candidates$Model[1]
+selection_result <- select_operating_model(model_comparison, temporal_tolerance)
+best_temporal_rmse <- selection_result$best_temporal_rmse
+selection_candidates <- selection_result$finalists
+selected_model_name <- selection_result$selected_model_name
 
 model_comparison$Selected <- model_comparison$Model == selected_model_name
 model_comparison$Delta_Temporal_RMSE <- model_comparison$Temporal_RMSE -
@@ -904,6 +1450,7 @@ model_comparison <- model_comparison[
 selected_spec <- candidate_specs[[selected_model_name]]
 selected_formula <- selected_spec$formula
 final_model <- candidate_fits[[selected_model_name]]
+production_model <- fit_candidate(selected_spec, growth)
 action_predictions <- predict_expected_gain(final_model, selected_spec, action_data)
 train_predictions <- predict_expected_gain(final_model, selected_spec, train_data)
 action_final_metrics <- evaluate_expected_gain(action_data, action_predictions)
@@ -919,6 +1466,126 @@ growth$expected_eoy <- growth$boy_score + growth$expected_gain
 growth$adjusted_growth_residual <- growth$score_gain - growth$expected_gain
 train_scored <- growth[growth$school_year %in% training_years, , drop = FALSE]
 action_scored <- growth[growth$school_year == action_year, , drop = FALSE]
+
+shrinkage_decision <- function(effect, lower, upper, q_value, n, min_n,
+                               effect_threshold = 0.75,
+                               q_threshold = 0.20) {
+  if (is.na(n) || n < min_n) {
+    return("Insufficient sample")
+  }
+  if (!is.na(q_value) && !is.na(lower) && !is.na(upper) &&
+      effect <= -effect_threshold && upper < 0 && q_value <= q_threshold) {
+    return("Shrunken intervention")
+  }
+  if (!is.na(q_value) && !is.na(lower) && !is.na(upper) &&
+      effect >= effect_threshold && lower > 0 && q_value <= q_threshold) {
+    return("Shrunken positive")
+  }
+  if (!is.na(effect) && abs(effect) >= effect_threshold) {
+    return("Monitor")
+  }
+  "In range"
+}
+
+make_shrinkage_rows <- function(fit, data, group_var, level, min_n) {
+  random_effects <- lme4::ranef(fit, condVar = TRUE)[[group_var]]
+  effects <- random_effects[["(Intercept)"]]
+  effect_names <- rownames(random_effects)
+  post_var <- attr(random_effects, "postVar")
+  se <- sqrt(post_var[1, 1, seq_along(effects)])
+  group_counts <- table(data[[group_var]])
+  raw_gap <- tapply(data$adjusted_growth_residual, data[[group_var]], mean)
+  rows <- data.frame(
+    Level = level,
+    Target = effect_names,
+    N = as.integer(group_counts[effect_names]),
+    RawGap = as.numeric(raw_gap[effect_names]),
+    ShrunkenGap = as.numeric(effects),
+    SE = as.numeric(se),
+    CI_Lower = as.numeric(effects - 1.96 * se),
+    CI_Upper = as.numeric(effects + 1.96 * se),
+    P_Value = 2 * pnorm(-abs(as.numeric(effects / se))),
+    stringsAsFactors = FALSE
+  )
+  rows$Q_Value <- p.adjust(rows$P_Value, method = "BH")
+  rows$Decision <- mapply(
+    shrinkage_decision,
+    rows$ShrunkenGap,
+    rows$CI_Lower,
+    rows$CI_Upper,
+    rows$Q_Value,
+    rows$N,
+    MoreArgs = list(min_n = min_n),
+    USE.NAMES = FALSE
+  )
+  rows
+}
+
+shrinkage_status <- data.frame(
+  Measure = c("Mixed-effects shrinkage model", "Formula"),
+  Value = c(
+    "Not run",
+    "score_gain ~ expected_gain + (1 | teacher_id) + (1 | course_id) + (1 | section_id)"
+  ),
+  stringsAsFactors = FALSE
+)
+shrinkage_review <- data.frame(
+  Level = character(),
+  Target = character(),
+  N = integer(),
+  RawGap = numeric(),
+  ShrunkenGap = numeric(),
+  SE = numeric(),
+  CI_Lower = numeric(),
+  CI_Upper = numeric(),
+  P_Value = numeric(),
+  Q_Value = numeric(),
+  Decision = character(),
+  stringsAsFactors = FALSE
+)
+
+if (dependency_status$Installed[dependency_status$Package == "lme4"]) {
+  shrinkage_fit <- try(
+    suppressWarnings(lme4::lmer(
+      score_gain ~ expected_gain + (1 | teacher_id) + (1 | course_id) + (1 | section_id),
+      data = action_scored,
+      REML = TRUE
+    )),
+    silent = TRUE
+  )
+  if (!inherits(shrinkage_fit, "try-error")) {
+    shrinkage_review <- rbind(
+      make_shrinkage_rows(shrinkage_fit, action_scored, "teacher_id", "Teacher", 20),
+      make_shrinkage_rows(shrinkage_fit, action_scored, "course_id", "Course", 20),
+      make_shrinkage_rows(shrinkage_fit, action_scored, "section_id", "Section", 5)
+    )
+    shrinkage_review$DecisionOrder <- c(
+      "Shrunken intervention" = 1,
+      "Shrunken positive" = 2,
+      "Monitor" = 3,
+      "Insufficient sample" = 4,
+      "In range" = 5
+    )[shrinkage_review$Decision]
+    shrinkage_review$DecisionOrder[is.na(shrinkage_review$DecisionOrder)] <- 9
+    shrinkage_review <- shrinkage_review[
+      order(shrinkage_review$DecisionOrder, shrinkage_review$ShrunkenGap),
+      ,
+      drop = FALSE
+    ]
+    shrinkage_status$Value[shrinkage_status$Measure == "Mixed-effects shrinkage model"] <-
+      ifelse(
+        lme4::isSingular(shrinkage_fit),
+        "Run on latest-year action data; singular fit, use as supporting shrinkage check",
+        "Run on latest-year action data"
+      )
+  } else {
+    shrinkage_status$Value[shrinkage_status$Measure == "Mixed-effects shrinkage model"] <-
+      "Skipped: lme4 model did not converge"
+  }
+} else {
+  shrinkage_status$Value[shrinkage_status$Measure == "Mixed-effects shrinkage model"] <-
+    "Skipped: lme4 not installed"
+}
 
 section_split <- split(action_scored, action_scored$section_year_id)
 section_rows <- lapply(section_split, function(df) {
@@ -1329,6 +1996,432 @@ course_display <- data.frame(
 )
 
 selected_comparison <- model_comparison[model_comparison$Selected, , drop = FALSE]
+naive_comparison <- model_comparison[
+  model_comparison$Model == "Naive prior-year mean growth",
+  ,
+  drop = FALSE
+]
+
+improvement_value <- function(benchmark, selected) {
+  as.numeric(benchmark) - as.numeric(selected)
+}
+
+improvement_pct <- function(benchmark, selected) {
+  ifelse(
+    is.na(benchmark) || benchmark == 0,
+    NA_real_,
+    (as.numeric(benchmark) - as.numeric(selected)) / as.numeric(benchmark)
+  )
+}
+
+aggregate_gain_r2 <- function(data, group_var) {
+  grouped <- aggregate(
+    cbind(score_gain, expected_gain) ~ group,
+    data.frame(
+      group = data[[group_var]],
+      score_gain = data$score_gain,
+      expected_gain = data$expected_gain
+    ),
+    mean
+  )
+  r_squared(grouped$score_gain, grouped$expected_gain)
+}
+
+section_mean_r2 <- aggregate_gain_r2(action_scored, "section_id")
+teacher_mean_r2 <- aggregate_gain_r2(action_scored, "teacher_id")
+course_mean_r2 <- aggregate_gain_r2(action_scored, "course_id")
+
+selected_temporal_years <- temporal_results[
+  temporal_results$Model == selected_model_name,
+  ,
+  drop = FALSE
+]
+naive_temporal_years <- temporal_results[
+  temporal_results$Model == "Naive prior-year mean growth",
+  ,
+  drop = FALSE
+]
+year_validation <- merge(
+  selected_temporal_years,
+  naive_temporal_years,
+  by = "ValidationYear",
+  suffixes = c("_Selected", "_Naive")
+)
+year_rmse_pass_rate <- mean(year_validation$RMSE_Selected < year_validation$RMSE_Naive)
+year_mae_pass_rate <- mean(year_validation$MAE_Selected < year_validation$MAE_Naive)
+no_year_worse_than_naive <- all(year_validation$RMSE_Selected <= year_validation$RMSE_Naive * 1.02)
+
+action_scored$boy_score_band <- cut(
+  action_scored$boy_score,
+  breaks = c(-Inf, 45, 60, Inf),
+  labels = c("Below 45", "45 to 60", "60+"),
+  right = FALSE
+)
+max_abs_group_bias <- function(data, group_var) {
+  grouped <- aggregate(
+    adjusted_growth_residual ~ group,
+    data.frame(
+      group = data[[group_var]],
+      adjusted_growth_residual = data$adjusted_growth_residual
+    ),
+    mean
+  )
+  max(abs(grouped$adjusted_growth_residual), na.rm = TRUE)
+}
+max_subgroup_bias <- max(c(
+  max_abs_group_bias(action_scored, "boy_score_band"),
+  max_abs_group_bias(action_scored, "course_track"),
+  max_abs_group_bias(action_scored, "attendance_category"),
+  max_abs_group_bias(action_scored, "school_year")
+), na.rm = TRUE)
+
+locked_holdout_validation <- data.frame(
+  Metric = c(
+    "Selected locked-holdout RMSE",
+    "Naive locked-holdout RMSE",
+    "Locked-holdout RMSE lift",
+    "Selected locked-holdout MAE",
+    "Naive locked-holdout MAE",
+    "Locked-holdout MAE lift",
+    "Locked-holdout gain R-squared"
+  ),
+  Value = c(
+    action_final_metrics$Gain_RMSE,
+    naive_comparison$Action_RMSE,
+    improvement_pct(naive_comparison$Action_RMSE, selected_comparison$Action_RMSE),
+    action_final_metrics$Gain_MAE,
+    naive_comparison$Action_MAE,
+    improvement_pct(naive_comparison$Action_MAE, selected_comparison$Action_MAE),
+    action_final_metrics$Gain_R2
+  ),
+  DisplayValue = c(
+    format_num(action_final_metrics$Gain_RMSE, 3),
+    format_num(naive_comparison$Action_RMSE, 3),
+    format_pct(improvement_pct(naive_comparison$Action_RMSE, selected_comparison$Action_RMSE), 1),
+    format_num(action_final_metrics$Gain_MAE, 3),
+    format_num(naive_comparison$Action_MAE, 3),
+    format_pct(improvement_pct(naive_comparison$Action_MAE, selected_comparison$Action_MAE), 1),
+    format_num(action_final_metrics$Gain_R2, 3)
+  ),
+  stringsAsFactors = FALSE
+)
+
+target_status <- function(actual, decision_grade, direction = "higher") {
+  if (is.na(actual)) {
+    return("Not available")
+  }
+  if (direction == "higher") {
+    return(ifelse(actual >= decision_grade, "Pass", "Below decision-grade"))
+  }
+  ifelse(abs(actual) <= decision_grade, "Pass", "Review")
+}
+
+model_validity_targets <- data.frame(
+  Metric = c(
+    "Rolling RMSE lift vs naive",
+    "Rolling MAE lift vs naive",
+    "Temporal gain R-squared",
+    "Section mean gain R-squared",
+    "Course mean gain R-squared",
+    "Teacher mean gain R-squared",
+    "Overall residual bias",
+    "Maximum subgroup residual bias",
+    "Validation years beating naive on RMSE",
+    "Validation years beating naive on MAE",
+    "No validation year worse than naive by more than 2% RMSE"
+  ),
+  Minimum = c(0.075, 0.050, 0.150, 0.200, 0.400, 0.500, 0.200, 0.500, 0.800, 0.800, 1.000),
+  DecisionGrade = c(0.100, 0.080, 0.200, 0.300, 0.500, 0.600, 0.200, 0.500, 0.800, 0.800, 1.000),
+  Stretch = c(0.150, 0.120, 0.300, 0.400, 0.600, 0.700, 0.100, 0.300, 1.000, 1.000, 1.000),
+  Actual = c(
+    improvement_pct(naive_comparison$Temporal_RMSE, selected_comparison$Temporal_RMSE),
+    improvement_pct(naive_comparison$Temporal_MAE, selected_comparison$Temporal_MAE),
+    selected_comparison$Temporal_R2,
+    section_mean_r2,
+    course_mean_r2,
+    teacher_mean_r2,
+    mean(action_scored$adjusted_growth_residual),
+    max_subgroup_bias,
+    year_rmse_pass_rate,
+    year_mae_pass_rate,
+    as.numeric(no_year_worse_than_naive)
+  ),
+  Direction = c(
+    rep("higher", 6),
+    rep("lower_abs", 2),
+    rep("higher", 3)
+  ),
+  EvidenceRole = c(
+    rep("Primary gate", 4),
+    "Supporting evidence",
+    "Supporting evidence",
+    "Calibration gate",
+    "Calibration gate",
+    "Primary gate",
+    "Primary gate",
+    "Primary gate"
+  ),
+  stringsAsFactors = FALSE
+)
+model_validity_targets$Status <- mapply(
+  target_status,
+  model_validity_targets$Actual,
+  model_validity_targets$DecisionGrade,
+  model_validity_targets$Direction,
+  USE.NAMES = FALSE
+)
+model_validity_targets$Actual_Display <- ifelse(
+  grepl("bias", model_validity_targets$Metric, ignore.case = TRUE) |
+    grepl("R-squared", model_validity_targets$Metric),
+  format_num(model_validity_targets$Actual, 3),
+  format_pct(model_validity_targets$Actual, 1)
+)
+model_validity_targets$DecisionGrade_Display <- ifelse(
+  grepl("bias", model_validity_targets$Metric, ignore.case = TRUE) |
+    grepl("R-squared", model_validity_targets$Metric),
+  format_num(model_validity_targets$DecisionGrade, 3),
+  format_pct(model_validity_targets$DecisionGrade, 1)
+)
+
+permutation_features <- intersect(c(
+  "grade_level", "course_track", "attendance_category", "attendance_probability",
+  "boy_score", "boy_readiness", "student_prior_year_count",
+  "student_prior_mean_gain", "student_prior_gain_sd", "student_prior_gain_trend",
+  "student_prior_mean_eoy", "student_prior_attendance_mean", "section_size",
+  "section_boy_mean", "section_boy_sd", "section_readiness_mean",
+  "section_attendance_mean", "section_prior_gain_mean",
+  "section_student_prior_mean_gain", "section_student_prior_gain_sd",
+  "section_pct_at_risk", "section_pct_high_absence", "school_year_offset"
+), names(action_data))
+
+make_permutation_importance <- function(feature_names, data, fit, spec, base_rmse,
+                                        reps = 8, seed = 20260623) {
+  set.seed(seed)
+  rows <- list()
+  counter <- 1
+  for (feature in feature_names) {
+    for (rep_id in seq_len(reps)) {
+      permuted <- data
+      permuted[[feature]] <- sample(permuted[[feature]])
+      permuted_prediction <- predict_expected_gain(fit, spec, permuted)
+      permuted_rmse <- rmse(permuted$score_gain, permuted_prediction)
+      rows[[counter]] <- data.frame(
+        Feature = feature,
+        Repeat = rep_id,
+        RMSE_Increase = permuted_rmse - base_rmse,
+        stringsAsFactors = FALSE
+      )
+      counter <- counter + 1
+    }
+  }
+  do.call(rbind, rows)
+}
+
+feature_importance_raw <- make_permutation_importance(
+  permutation_features,
+  action_data,
+  final_model,
+  selected_spec,
+  action_final_metrics$Gain_RMSE
+)
+feature_importance_mean <- aggregate(
+  RMSE_Increase ~ Feature,
+  feature_importance_raw,
+  mean
+)
+feature_importance_sd <- aggregate(
+  RMSE_Increase ~ Feature,
+  feature_importance_raw,
+  sd
+)
+names(feature_importance_sd)[2] <- "RMSE_Increase_SD"
+feature_importance <- merge(feature_importance_mean, feature_importance_sd, by = "Feature")
+feature_importance <- feature_importance[order(feature_importance$RMSE_Increase, decreasing = TRUE), ]
+feature_importance$Rank <- seq_len(nrow(feature_importance))
+
+top_importance_cutoff <- quantile(
+  feature_importance_raw$RMSE_Increase,
+  probs = 0.75,
+  na.rm = TRUE
+)
+feature_stability <- aggregate(
+  cbind(
+    Positive_Importance = RMSE_Increase > 0,
+    Top_Quartile_Importance = RMSE_Increase >= top_importance_cutoff
+  ) ~ Feature,
+  feature_importance_raw,
+  mean
+)
+feature_stability <- merge(feature_stability, feature_importance[, c("Feature", "Rank")], by = "Feature")
+feature_stability <- feature_stability[order(feature_stability$Rank), ]
+
+bootstrap_flag_stability <- function(data, review, group_vars, reps = 300,
+                                     effect_threshold = 1.0, seed = 20260623) {
+  group_key <- do.call(paste, c(data[group_vars], sep = " | "))
+  split_data <- split(data, group_key)
+  rows <- lapply(seq_len(nrow(review)), function(i) {
+    target_key <- do.call(paste, c(review[i, group_vars, drop = FALSE], sep = " | "))
+    df <- split_data[[target_key]]
+    if (is.null(df) || nrow(df) <= 1) {
+      stability <- NA_real_
+    } else {
+      set.seed(seed + i)
+      boots <- replicate(reps, mean(sample(
+        df$adjusted_growth_residual,
+        size = nrow(df),
+        replace = TRUE
+      )))
+      if (review$AdjustedGap[i] < 0) {
+        stability <- mean(boots <= -effect_threshold)
+      } else {
+        stability <- mean(boots >= effect_threshold)
+      }
+    }
+    data.frame(
+      Level = review$Level[i],
+      Target = review$DisplayTarget[i],
+      N = review$N[i],
+      AdjustedGap = review$AdjustedGap[i],
+      Decision = review$Decision[i],
+      Stability = stability,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+flag_stability <- rbind(
+  bootstrap_flag_stability(action_scored, latest_teacher_review, c("teacher_id")),
+  bootstrap_flag_stability(action_scored, latest_course_review, c("course_id")),
+  bootstrap_flag_stability(action_scored, latest_section_review, c("section_id", "teacher_id", "course_id"))
+)
+flag_stability$Required_Stability <- ifelse(flag_stability$Level == "Section", 0.70, 0.80)
+flag_stability$Status <- ifelse(
+  is.na(flag_stability$Stability),
+  "Insufficient sample",
+  ifelse(flag_stability$Stability >= flag_stability$Required_Stability, "Stable", "Directional")
+)
+
+run_null_permutation_benchmark <- function(spec, train_data, action_data,
+                                           reps = 5, seed = 20260623) {
+  set.seed(seed)
+  rows <- lapply(seq_len(reps), function(rep_id) {
+    permuted_train <- train_data
+    permuted_train$score_gain <- sample(permuted_train$score_gain)
+    fit <- fit_candidate(spec, permuted_train, seed = seed + rep_id)
+    predictions <- predict_expected_gain(fit, spec, action_data)
+    metrics <- evaluate_expected_gain(action_data, predictions)
+    data.frame(
+      Repeat = rep_id,
+      RMSE = metrics$Gain_RMSE,
+      MAE = metrics$Gain_MAE,
+      R2 = metrics$Gain_R2,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+null_permutation_benchmark <- run_null_permutation_benchmark(
+  selected_spec,
+  train_data,
+  action_data
+)
+
+model_signal_ceiling <- data.frame(
+  Diagnostic = c(
+    "Individual gain SD",
+    "Student mean-gain R-squared",
+    "Section mean-gain R-squared",
+    "Course mean-gain R-squared",
+    "Teacher mean-gain R-squared",
+    "Selected train-validation R-squared gap"
+  ),
+  Value = c(
+    sd(growth$score_gain),
+    aggregate_gain_r2(growth, "sis_user_id"),
+    section_mean_r2,
+    course_mean_r2,
+    teacher_mean_r2,
+    selected_comparison$Train_R2 - selected_comparison$Temporal_R2
+  ),
+  DisplayValue = c(
+    format_num(sd(growth$score_gain), 3),
+    format_num(aggregate_gain_r2(growth, "sis_user_id"), 3),
+    format_num(section_mean_r2, 3),
+    format_num(course_mean_r2, 3),
+    format_num(teacher_mean_r2, 3),
+    format_num(selected_comparison$Train_R2 - selected_comparison$Temporal_R2, 3)
+  ),
+  stringsAsFactors = FALSE
+)
+
+model_strength <- data.frame(
+  Measure = c(
+    "Naive temporal RMSE",
+    "Selected temporal RMSE",
+    "Temporal RMSE improvement",
+    "Temporal RMSE improvement percent",
+    "Naive temporal MAE",
+    "Selected temporal MAE",
+    "Temporal MAE improvement",
+    "Temporal MAE improvement percent",
+    "Naive latest-year RMSE",
+    "Selected latest-year RMSE",
+    "Latest-year RMSE improvement",
+    "Latest-year RMSE improvement percent",
+    "Naive latest-year MAE",
+    "Selected latest-year MAE",
+    "Latest-year MAE improvement",
+    "Latest-year MAE improvement percent",
+    "Selected latest-year gain R-squared",
+    "Selected latest-year EOY R-squared",
+    "Latest-year section-mean gain R-squared",
+    "Latest-year teacher-mean gain R-squared",
+    "Latest-year course-mean gain R-squared"
+  ),
+  Value = c(
+    format_num(naive_comparison$Temporal_RMSE, 3),
+    format_num(selected_comparison$Temporal_RMSE, 3),
+    format_num(improvement_value(naive_comparison$Temporal_RMSE, selected_comparison$Temporal_RMSE), 3),
+    format_pct(improvement_pct(naive_comparison$Temporal_RMSE, selected_comparison$Temporal_RMSE), 1),
+    format_num(naive_comparison$Temporal_MAE, 3),
+    format_num(selected_comparison$Temporal_MAE, 3),
+    format_num(improvement_value(naive_comparison$Temporal_MAE, selected_comparison$Temporal_MAE), 3),
+    format_pct(improvement_pct(naive_comparison$Temporal_MAE, selected_comparison$Temporal_MAE), 1),
+    format_num(naive_comparison$Action_RMSE, 3),
+    format_num(selected_comparison$Action_RMSE, 3),
+    format_num(improvement_value(naive_comparison$Action_RMSE, selected_comparison$Action_RMSE), 3),
+    format_pct(improvement_pct(naive_comparison$Action_RMSE, selected_comparison$Action_RMSE), 1),
+    format_num(naive_comparison$Action_MAE, 3),
+    format_num(selected_comparison$Action_MAE, 3),
+    format_num(improvement_value(naive_comparison$Action_MAE, selected_comparison$Action_MAE), 3),
+    format_pct(improvement_pct(naive_comparison$Action_MAE, selected_comparison$Action_MAE), 1),
+    format_num(selected_comparison$Action_R2, 3),
+    format_num(selected_comparison$Action_EOY_R2, 3),
+    format_num(section_mean_r2, 3),
+    format_num(teacher_mean_r2, 3),
+    format_num(course_mean_r2, 3)
+  ),
+  stringsAsFactors = FALSE
+)
+
+shrinkage_review_display <- data.frame(
+  Level = shrinkage_review$Level,
+  Target = shrinkage_review$Target,
+  N = shrinkage_review$N,
+  Raw_gap = format_num(shrinkage_review$RawGap, 2),
+  Shrunken_gap = format_num(shrinkage_review$ShrunkenGap, 2),
+  CI_95 = paste0(
+    format_num(shrinkage_review$CI_Lower, 2),
+    " to ",
+    format_num(shrinkage_review$CI_Upper, 2)
+  ),
+  P_value = format_p(shrinkage_review$P_Value),
+  Q_value = format_p(shrinkage_review$Q_Value),
+  Decision = shrinkage_review$Decision,
+  stringsAsFactors = FALSE
+)
 
 final_metrics <- data.frame(
   Metric = c(
@@ -1373,7 +2466,7 @@ final_metrics <- data.frame(
     selected_comparison$Method,
     selected_comparison$Family,
     selected_comparison$TunedParameters,
-    "Lowest repeated-CV RMSE among direct-growth candidates within 0.01 points of the best temporal-CV RMSE",
+    "Lowest rolling-origin temporal RMSE among eligible direct-growth candidates; repeated-CV RMSE is the tie-breaker within 0.01 points",
     format(nrow(train_data), big.mark = ","),
     format(nrow(action_data), big.mark = ","),
     paste(training_years, collapse = ", "),
@@ -1408,40 +2501,67 @@ final_metrics <- data.frame(
 
 family_review_spec <- data.frame(
   Family = c(
+    "Naive benchmark",
     "Direct growth linear baselines",
+    "History/composition parametric models",
+    "Feature-engineered parametric model",
     "Direct growth polynomial terms",
+    "Natural spline regression",
     "Direct growth interaction surfaces",
     "GAM smooths",
+    "Regularized regression",
     "Regression trees",
     "Random forests",
+    "Ranger forests",
     "Gradient boosting",
+    "Adaptive spline MARS",
     "Validation ensembles",
+    "Stacked validation ensemble",
+    "Future planning benchmark",
     "EOY-derived benchmarks",
     "Teacher/course ID leakage check"
   ),
   Pattern = c(
+    "^Naive prior-year mean growth$",
     "^Growth (linear benchmark|readiness model)$",
+    "^Growth history",
+    "^Growth feature discovery model$",
     "^Growth polynomial",
+    "^Growth spline history model$",
     "^Growth (interaction|cyclic)",
     "^Growth GAM",
+    "^Growth (ridge|elastic net|lasso)$",
     "^Growth regression tree",
     "^Growth random forest",
+    "^Growth ranger forest",
     "^Growth gradient boosting",
+    "^Growth MARS",
     "^Growth ensemble",
+    "^Growth stacked ensemble$",
+    "^Growth future planning benchmark$",
     "^EOY .*benchmark$",
-    "Teacher/course leakage benchmark$"
+    "leakage benchmark$"
   ),
   Why_tested = c(
+    "Uses only the training-year mean gain so every selected model must beat a simple planning baseline.",
     "Directly predicts BOY/EOY score gain from starting profile and context.",
+    "Adds multi-year student history and section composition so the expected-growth baseline uses the available operating context.",
+    "Searches leakage-safe transformed features, thresholds, multi-year history, and interactions in one parametric specification.",
     "Tests whether increasing parametric curvature improves validated growth prediction.",
+    "Tests smooth but interpretable nonlinear effects using natural spline basis functions.",
     "Tests whether baseline score, readiness, track, attendance, and year effects vary together.",
     "Uses smooth nonlinear functions for baseline, readiness, attendance, and year effects.",
+    "Uses regularization to search higher-dimensional history and interaction terms while controlling overfit.",
     "Tests simple non-parametric threshold rules.",
     "Tests a flexible non-parametric tree ensemble without teacher, course ID, or section ID effects.",
+    "Tests a faster tuned random forest implementation when the optional ranger package is available.",
     "Tests boosted trees for nonlinear interactions without persistent ID effects.",
+    "Tests multivariate adaptive regression splines for automatic hinge and interaction discovery.",
     "Tests whether averaging the best nonlinear and parametric growth shapes stabilizes future-year prediction.",
+    "Tests whether an out-of-fold learned blend improves on hand-weighted model averages.",
+    "Tests lagged teacher/course context for future planning but excludes it from same-year judgment selection.",
     "Predicts final EOY score first, then converts it to expected gain; benchmark only because growth is the business target.",
-    "Shows what happens when teacher and course IDs are included; excluded from operations because it would absorb the review signals."
+    "Shows what happens when teacher or course IDs are included; excluded from operations because they absorb review signals."
   ),
   stringsAsFactors = FALSE
 )
@@ -1549,9 +2669,9 @@ selection_rationale <- data.frame(
     "Selected operating model",
     "Selected family",
     "Selected tuned parameters",
-    "Temporal CV RMSE",
-    "Temporal CV MAE",
-    "Temporal CV R-squared",
+    "Rolling-origin RMSE",
+    "Rolling-origin MAE",
+    "Rolling-origin R-squared",
     "Repeated-CV RMSE SD",
     "Latest-year RMSE",
     "Latest-year MAE",
@@ -1561,8 +2681,8 @@ selection_rationale <- data.frame(
   ),
   Rationale = c(
     "Directly predict BOY/EOY score gain because growth is the performance metric used to evaluate actual class outcomes.",
-    "Leave-one-year-out temporal-CV RMSE tests whether prior years generalize to a future year.",
-    "When candidates are within 0.01 points of the best temporal-CV RMSE, repeated-CV RMSE chooses the more stable baseline without looking at the latest action year.",
+    "Rolling-origin temporal RMSE tests whether earlier years generalize to a later year without training on future records.",
+    "When candidates are within 0.01 points of the best rolling-origin RMSE, repeated-CV RMSE chooses the more stable baseline without looking at the latest action year.",
     selected_model_name,
     selected_comparison$Family,
     selected_comparison$TunedParameters,
@@ -1582,12 +2702,24 @@ selection_rationale <- data.frame(
 write.csv(model_comparison, file.path("reports", "growth_model_comparison.csv"), row.names = FALSE)
 write.csv(model_comparison_display, file.path("reports", "growth_model_comparison_display.csv"), row.names = FALSE)
 write.csv(model_search_grid, file.path("reports", "growth_model_search_grid.csv"), row.names = FALSE)
+write.csv(model_strength, file.path("reports", "growth_model_strength.csv"), row.names = FALSE)
 write.csv(family_summary, file.path("reports", "growth_model_family_summary.csv"), row.names = FALSE)
 write.csv(selection_rationale, file.path("reports", "growth_model_selection_rationale.csv"), row.names = FALSE)
 write.csv(final_metrics, file.path("reports", "growth_final_metrics.csv"), row.names = FALSE)
 write.csv(shape_review, file.path("reports", "growth_shape_review.csv"), row.names = FALSE)
+write.csv(shrinkage_status, file.path("reports", "shrinkage_status.csv"), row.names = FALSE)
+write.csv(shrinkage_review_display, file.path("reports", "shrinkage_review.csv"), row.names = FALSE)
 write.csv(dependency_status, file.path("reports", "model_dependency_status.csv"), row.names = FALSE)
 write.csv(temporal_summary, file.path("reports", "model_temporal_validation.csv"), row.names = FALSE)
+write.csv(temporal_results, file.path("reports", "rolling_origin_validation.csv"), row.names = FALSE)
+write.csv(process_validation, file.path("reports", "process_validation.csv"), row.names = FALSE)
+write.csv(locked_holdout_validation, file.path("reports", "locked_holdout_validation.csv"), row.names = FALSE)
+write.csv(model_validity_targets, file.path("reports", "model_validity_targets.csv"), row.names = FALSE)
+write.csv(feature_importance, file.path("reports", "feature_importance.csv"), row.names = FALSE)
+write.csv(feature_stability, file.path("reports", "feature_stability.csv"), row.names = FALSE)
+write.csv(flag_stability, file.path("reports", "flag_stability.csv"), row.names = FALSE)
+write.csv(null_permutation_benchmark, file.path("reports", "null_permutation_benchmark.csv"), row.names = FALSE)
+write.csv(model_signal_ceiling, file.path("reports", "model_signal_ceiling.csv"), row.names = FALSE)
 write.csv(model_bootstrap_validation, file.path("reports", "model_bootstrap_validation.csv"), row.names = FALSE)
 write.csv(section_ttests_display, file.path("reports", "section_ttests.csv"), row.names = FALSE)
 write.csv(section_signals_display, file.path("reports", "section_adjusted_signals.csv"), row.names = FALSE)
@@ -1611,17 +2743,30 @@ saveRDS(
     selected_spec = selected_spec,
     candidate_specs = candidate_specs,
     final_model = final_model,
+    production_model = production_model,
     dependency_status = dependency_status,
     model_comparison = model_comparison,
     model_search_grid = model_search_grid,
+    model_strength = model_strength,
+    model_validity_targets = model_validity_targets,
+    locked_holdout_validation = locked_holdout_validation,
+    feature_importance = feature_importance,
+    feature_stability = feature_stability,
+    flag_stability = flag_stability,
+    null_permutation_benchmark = null_permutation_benchmark,
+    process_validation = process_validation,
+    model_signal_ceiling = model_signal_ceiling,
     family_summary = family_summary,
     selection_rationale = selection_rationale,
+    shrinkage_status = shrinkage_status,
+    shrinkage_review = shrinkage_review,
     section_summary = section_summary,
     teacher_summary = teacher_summary,
     course_summary = course_summary,
     future_priorities = future_priorities,
     historical_section_evidence = historical_section_evidence,
     temporal_summary = temporal_summary,
+    temporal_results = temporal_results,
     model_bootstrap_validation = model_bootstrap_validation,
     latest_teacher_review = latest_teacher_review,
     latest_course_review = latest_course_review,
@@ -1817,7 +2962,17 @@ legend(
 dev.off()
 
 png(file.path("figures", "growth_model_comparison.png"), width = 1200, height = 760, res = 150)
-ordered_models <- model_comparison[order(model_comparison$Temporal_RMSE, decreasing = TRUE), ]
+plot_model_cutoff <- selected_comparison$Temporal_RMSE + 1.0
+plot_models <- model_comparison[
+  model_comparison$Role != "Excluded leakage benchmark" &
+    (
+      model_comparison$Temporal_RMSE <= plot_model_cutoff |
+        model_comparison$Selected
+    ),
+  ,
+  drop = FALSE
+]
+ordered_models <- plot_models[order(plot_models$Temporal_RMSE, decreasing = TRUE), ]
 y_pos <- seq_len(nrow(ordered_models))
 x_min <- min(ordered_models$Temporal_RMSE - ordered_models$Temporal_RMSE_SD) - 0.05
 x_max <- max(ordered_models$Temporal_RMSE + ordered_models$Temporal_RMSE_SD) + 0.05
@@ -1827,7 +2982,7 @@ plot(
   y_pos,
   xlim = c(x_min, x_max),
   yaxt = "n",
-  xlab = "Leave-one-year-out RMSE",
+  xlab = "Rolling-origin RMSE",
   ylab = "",
   pch = 19,
   col = ifelse(ordered_models$Selected, "#1B6CA8", "#555555"),
@@ -1855,6 +3010,12 @@ dev.off()
 png(file.path("figures", "growth_model_search.png"), width = 1300, height = 700, res = 150)
 par(mfrow = c(1, 2), mar = c(5, 12, 4, 2))
 family_plot <- family_summary[order(as.numeric(family_summary$Best_temporal_RMSE), decreasing = TRUE), ]
+family_plot <- family_plot[
+  as.numeric(family_plot$Best_temporal_RMSE) <= selected_comparison$Temporal_RMSE + 1.0 |
+    family_plot$Selected_family == "Yes",
+  ,
+  drop = FALSE
+]
 family_rmse <- as.numeric(family_plot$Best_temporal_RMSE)
 family_r2 <- as.numeric(family_plot$Best_temporal_R2)
 family_cols <- ifelse(family_plot$Selected_family == "Yes", "#1B6CA8", "#555555")
@@ -1867,7 +3028,7 @@ plot(
   pch = 19,
   cex = 1.2,
   col = family_cols,
-  xlab = "Temporal-CV RMSE",
+  xlab = "Rolling-origin RMSE",
   ylab = "",
   main = "Best Candidate by Family"
 )
@@ -1886,6 +3047,13 @@ eligible_plot <- head(eligible_plot, 12)
 eligible_plot <- eligible_plot[order(eligible_plot$Temporal_R2), , drop = FALSE]
 model_label <- function(model_name) {
   labels <- c(
+    "Naive prior-year mean growth" = "Naive mean",
+    "Growth history-composition model" = "History comp LM",
+    "Growth history interaction model" = "History interact LM",
+    "Growth ridge" = "Ridge",
+    "Growth elastic net" = "Elastic net",
+    "Growth lasso" = "Lasso",
+    "Growth stacked ensemble" = "Stacked ensemble",
     "Growth ensemble nonlinear weighted" = "Ensemble weighted",
     "Growth ensemble balanced" = "Ensemble balanced",
     "Growth gradient boosting 1" = "GBM 1",
@@ -1910,7 +3078,7 @@ plot(
   pch = 19,
   col = "#1B6CA8",
   yaxt = "n",
-  xlab = "Temporal-CV growth R-squared",
+  xlab = "Rolling-origin growth R-squared",
   ylab = "",
   main = "Top Growth Models"
 )

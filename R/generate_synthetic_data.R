@@ -62,7 +62,7 @@ if (!file.exists(raw_path)) {
       score <- ifelse(present, pmin(pmax(latent + rnorm(1, 0, 3), 0), 100), 0)
       posterior <- ifelse(present, pmin(pmax(0.65 * latent + 0.35 * score, 0), 100), NA_real_)
       rows[[counter]] <- data.frame(
-        school_year = paste0(2025 + school_year_offset, "-", 2026 + school_year_offset),
+        school_year = paste0(2018 + school_year_offset, "-", 2019 + school_year_offset),
         school_year_offset = school_year_offset,
         sis_user_id = student_profile$sis_user_id[student_row],
         student_label = paste("Synthetic Student", student_row),
@@ -105,6 +105,13 @@ if (!file.exists(raw_path)) {
 }
 
 assessment <- read.csv(raw_path, stringsAsFactors = FALSE)
+assessment$school_year_offset <- as.integer(assessment$school_year_offset)
+assessment$school_year <- paste0(
+  2018 + assessment$school_year_offset,
+  "-",
+  2019 + assessment$school_year_offset
+)
+write.csv(assessment, raw_path, row.names = FALSE)
 assessment <- assessment[order(assessment$sis_user_id, assessment$sequence_index), ]
 assessment$is_present_bool <- tolower(as.character(assessment$is_present)) == "true"
 
@@ -271,6 +278,344 @@ names(growth_data) <- c(
   "annual_sin", "annual_cos"
 )
 
+growth_data <- growth_data[order(growth_data$sis_user_id, growth_data$school_year_offset), ]
+
+lag_by_student <- function(values, student_ids) {
+  out <- rep(NA, length(values))
+  split_idx <- split(seq_along(values), student_ids)
+  for (idx in split_idx) {
+    out[idx] <- c(NA, values[idx[-length(idx)]])
+  }
+  out
+}
+
+prior_student_stat <- function(values, student_ids, fun, min_n = 1) {
+  out <- rep(NA_real_, length(values))
+  split_idx <- split(seq_along(values), student_ids)
+  for (idx in split_idx) {
+    for (pos in seq_along(idx)) {
+      previous_idx <- idx[seq_len(pos - 1)]
+      previous_values <- values[previous_idx]
+      previous_values <- previous_values[!is.na(previous_values)]
+      if (length(previous_values) >= min_n) {
+        out[idx[pos]] <- fun(previous_values)
+      }
+    }
+  }
+  out
+}
+
+prior_student_trend <- function(values, student_ids, offsets, min_n = 2) {
+  out <- rep(NA_real_, length(values))
+  split_idx <- split(seq_along(values), student_ids)
+  for (idx in split_idx) {
+    for (pos in seq_along(idx)) {
+      previous_idx <- idx[seq_len(pos - 1)]
+      previous_values <- values[previous_idx]
+      previous_offsets <- offsets[previous_idx]
+      keep <- !is.na(previous_values) & !is.na(previous_offsets)
+      if (sum(keep) >= min_n) {
+        trend_fit <- lm(previous_values[keep] ~ previous_offsets[keep])
+        out[idx[pos]] <- unname(coef(trend_fit)[2])
+      }
+    }
+  }
+  out
+}
+
+prior_group_stat <- function(values, group_ids, offsets, fun, min_n = 1) {
+  out <- rep(NA_real_, length(values))
+  split_idx <- split(seq_along(values), group_ids)
+  for (idx in split_idx) {
+    for (row_id in idx) {
+      previous_idx <- idx[offsets[idx] < offsets[row_id]]
+      previous_values <- values[previous_idx]
+      previous_values <- previous_values[!is.na(previous_values)]
+      if (length(previous_values) >= min_n) {
+        out[row_id] <- fun(previous_values)
+      }
+    }
+  }
+  out
+}
+
+prior_group_trend <- function(values, group_ids, offsets, min_n = 2) {
+  out <- rep(NA_real_, length(values))
+  split_idx <- split(seq_along(values), group_ids)
+  for (idx in split_idx) {
+    for (row_id in idx) {
+      previous_idx <- idx[offsets[idx] < offsets[row_id]]
+      previous_values <- values[previous_idx]
+      previous_offsets <- offsets[previous_idx]
+      keep <- !is.na(previous_values) & !is.na(previous_offsets)
+      if (sum(keep) >= min_n) {
+        trend_fit <- lm(previous_values[keep] ~ previous_offsets[keep])
+        out[row_id] <- unname(coef(trend_fit)[2])
+      }
+    }
+  }
+  out
+}
+
+safe_z <- function(values) {
+  if (all(is.na(values)) || is.na(sd(values, na.rm = TRUE)) ||
+      sd(values, na.rm = TRUE) == 0) {
+    return(rep(0, length(values)))
+  }
+  as.numeric(scale(values))
+}
+
+impute_by_group <- function(values, group_a, group_b, fallback_values) {
+  out <- values
+  missing <- is.na(out)
+  group_key <- paste(group_a, group_b, sep = " | ")
+  observed <- !is.na(values)
+  group_medians <- tapply(values[observed], group_key[observed], median, na.rm = TRUE)
+  fallback <- median(values, na.rm = TRUE)
+  if (is.na(fallback)) {
+    fallback <- median(fallback_values, na.rm = TRUE)
+  }
+  for (row_id in which(missing)) {
+    key <- group_key[row_id]
+    replacement <- if (key %in% names(group_medians)) group_medians[[key]] else NA_real_
+    row_fallback <- fallback_values[row_id]
+    if (is.null(replacement) || is.na(replacement)) {
+      out[row_id] <- ifelse(is.na(row_fallback), fallback, row_fallback)
+    } else {
+      out[row_id] <- replacement
+    }
+  }
+  out
+}
+
+growth_data$prior_boy_score_raw <- lag_by_student(growth_data$boy_score, growth_data$sis_user_id)
+growth_data$prior_eoy_score_raw <- lag_by_student(growth_data$eoy_score, growth_data$sis_user_id)
+growth_data$prior_score_gain_raw <- lag_by_student(growth_data$score_gain, growth_data$sis_user_id)
+growth_data$prior_boy_readiness_raw <- lag_by_student(growth_data$boy_readiness, growth_data$sis_user_id)
+growth_data$prior_eoy_readiness_raw <- lag_by_student(growth_data$eoy_readiness, growth_data$sis_user_id)
+growth_data$prior_attendance_probability_raw <- lag_by_student(
+  growth_data$attendance_probability,
+  growth_data$sis_user_id
+)
+growth_data$has_prior_year <- as.integer(!is.na(growth_data$prior_score_gain_raw))
+growth_data$prior_boy_score <- impute_by_group(
+  growth_data$prior_boy_score_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  growth_data$boy_score
+)
+growth_data$prior_eoy_score <- impute_by_group(
+  growth_data$prior_eoy_score_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  growth_data$boy_score
+)
+growth_data$prior_score_gain <- impute_by_group(
+  growth_data$prior_score_gain_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$prior_boy_readiness <- impute_by_group(
+  growth_data$prior_boy_readiness_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  growth_data$boy_readiness
+)
+growth_data$prior_eoy_readiness <- impute_by_group(
+  growth_data$prior_eoy_readiness_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  growth_data$boy_readiness
+)
+growth_data$prior_attendance_probability <- impute_by_group(
+  growth_data$prior_attendance_probability_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  growth_data$attendance_probability
+)
+growth_data$student_prior_year_count <- prior_student_stat(
+  growth_data$score_gain,
+  growth_data$sis_user_id,
+  length
+)
+growth_data$student_prior_mean_gain_raw <- prior_student_stat(
+  growth_data$score_gain,
+  growth_data$sis_user_id,
+  mean
+)
+growth_data$student_prior_gain_sd_raw <- prior_student_stat(
+  growth_data$score_gain,
+  growth_data$sis_user_id,
+  function(x) ifelse(length(x) <= 1, 0, sd(x))
+)
+growth_data$student_prior_gain_trend_raw <- prior_student_trend(
+  growth_data$score_gain,
+  growth_data$sis_user_id,
+  growth_data$school_year_offset
+)
+growth_data$student_prior_mean_eoy_raw <- prior_student_stat(
+  growth_data$eoy_score,
+  growth_data$sis_user_id,
+  mean
+)
+growth_data$student_prior_attendance_mean_raw <- prior_student_stat(
+  growth_data$attendance_probability,
+  growth_data$sis_user_id,
+  mean
+)
+
+growth_data$student_prior_year_count[is.na(growth_data$student_prior_year_count)] <- 0
+growth_data$student_prior_mean_gain <- impute_by_group(
+  growth_data$student_prior_mean_gain_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$student_prior_gain_sd <- impute_by_group(
+  growth_data$student_prior_gain_sd_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$student_prior_gain_trend <- impute_by_group(
+  growth_data$student_prior_gain_trend_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$student_prior_mean_eoy <- impute_by_group(
+  growth_data$student_prior_mean_eoy_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  growth_data$boy_score
+)
+growth_data$student_prior_attendance_mean <- impute_by_group(
+  growth_data$student_prior_attendance_mean_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  growth_data$attendance_probability
+)
+
+growth_data$teacher_prior_mean_gain_raw <- prior_group_stat(
+  growth_data$score_gain,
+  growth_data$teacher_id,
+  growth_data$school_year_offset,
+  mean
+)
+growth_data$teacher_prior_gain_sd_raw <- prior_group_stat(
+  growth_data$score_gain,
+  growth_data$teacher_id,
+  growth_data$school_year_offset,
+  function(x) ifelse(length(x) <= 1, 0, sd(x))
+)
+growth_data$teacher_prior_gain_trend_raw <- prior_group_trend(
+  growth_data$score_gain,
+  growth_data$teacher_id,
+  growth_data$school_year_offset
+)
+growth_data$course_prior_mean_gain_raw <- prior_group_stat(
+  growth_data$score_gain,
+  growth_data$course_id,
+  growth_data$school_year_offset,
+  mean
+)
+growth_data$course_prior_gain_sd_raw <- prior_group_stat(
+  growth_data$score_gain,
+  growth_data$course_id,
+  growth_data$school_year_offset,
+  function(x) ifelse(length(x) <= 1, 0, sd(x))
+)
+growth_data$course_prior_gain_trend_raw <- prior_group_trend(
+  growth_data$score_gain,
+  growth_data$course_id,
+  growth_data$school_year_offset
+)
+
+growth_data$teacher_prior_mean_gain <- impute_by_group(
+  growth_data$teacher_prior_mean_gain_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$teacher_prior_gain_sd <- impute_by_group(
+  growth_data$teacher_prior_gain_sd_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$teacher_prior_gain_trend <- impute_by_group(
+  growth_data$teacher_prior_gain_trend_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$course_prior_mean_gain <- impute_by_group(
+  growth_data$course_prior_mean_gain_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$course_prior_gain_sd <- impute_by_group(
+  growth_data$course_prior_gain_sd_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+growth_data$course_prior_gain_trend <- impute_by_group(
+  growth_data$course_prior_gain_trend_raw,
+  growth_data$grade_level,
+  growth_data$course_track,
+  rep(0, nrow(growth_data))
+)
+
+growth_data$prior_boy_score_z <- safe_z(growth_data$prior_boy_score)
+growth_data$prior_score_gain_z <- safe_z(growth_data$prior_score_gain)
+growth_data$student_prior_mean_gain_z <- safe_z(growth_data$student_prior_mean_gain)
+growth_data$student_prior_gain_sd_z <- safe_z(growth_data$student_prior_gain_sd)
+growth_data$student_prior_gain_trend_z <- safe_z(growth_data$student_prior_gain_trend)
+growth_data$student_prior_mean_eoy_z <- safe_z(growth_data$student_prior_mean_eoy)
+growth_data$teacher_prior_mean_gain_z <- safe_z(growth_data$teacher_prior_mean_gain)
+growth_data$course_prior_mean_gain_z <- safe_z(growth_data$course_prior_mean_gain)
+growth_data$prior_readiness_gain <- growth_data$prior_eoy_readiness -
+  growth_data$prior_boy_readiness
+
+section_key <- paste(growth_data$school_year, growth_data$section_id, sep = " | ")
+section_stat <- function(values, fun) {
+  as.numeric(ave(values, section_key, FUN = fun))
+}
+section_sd <- function(values) {
+  as.numeric(ave(values, section_key, FUN = function(x) {
+    ifelse(length(x) <= 1, 0, sd(x, na.rm = TRUE))
+  }))
+}
+growth_data$section_size <- section_stat(growth_data$boy_score, length)
+growth_data$section_boy_mean <- section_stat(growth_data$boy_score, mean)
+growth_data$section_boy_sd <- section_sd(growth_data$boy_score)
+growth_data$section_readiness_mean <- section_stat(growth_data$boy_readiness, mean)
+growth_data$section_attendance_mean <- section_stat(growth_data$attendance_probability, mean)
+growth_data$section_prior_gain_mean <- section_stat(growth_data$prior_score_gain, mean)
+growth_data$section_student_prior_mean_gain <- section_stat(growth_data$student_prior_mean_gain, mean)
+growth_data$section_student_prior_gain_sd <- section_sd(growth_data$student_prior_mean_gain)
+growth_data$section_pct_below_45 <- section_stat(as.integer(growth_data$boy_score < 45), mean)
+growth_data$section_pct_45_to_60 <- section_stat(
+  as.integer(growth_data$boy_score >= 45 & growth_data$boy_score < 60),
+  mean
+)
+growth_data$section_pct_above_60 <- section_stat(as.integer(growth_data$boy_score >= 60), mean)
+growth_data$section_pct_at_risk <- section_stat(
+  as.integer(growth_data$attendance_category == "at_risk"),
+  mean
+)
+growth_data$section_pct_high_absence <- section_stat(
+  as.integer(growth_data$attendance_category == "high"),
+  mean
+)
+growth_data$section_boy_mean_z <- safe_z(growth_data$section_boy_mean)
+growth_data$section_prior_gain_mean_z <- safe_z(growth_data$section_prior_gain_mean)
+growth_data$section_student_prior_mean_gain_z <- safe_z(growth_data$section_student_prior_mean_gain)
+growth_data$section_student_prior_gain_sd_z <- safe_z(growth_data$section_student_prior_gain_sd)
+
 growth_data <- growth_data[order(growth_data$section_id, growth_data$sis_user_id), ]
 write.csv(
   growth_data,
@@ -286,6 +631,8 @@ growth_profile <- data.frame(
     "Unique public-safe student IDs",
     "Unique section-year groups",
     "Unique simulated teachers",
+    "Records with prior-year history",
+    "Mean section size",
     "Mean BOY score",
     "Mean EOY score",
     "Mean BOY/EOY gain",
@@ -298,6 +645,8 @@ growth_profile <- data.frame(
     format(length(unique(growth_data$sis_user_id)), big.mark = ","),
     format(length(unique(paste(growth_data$section_id, growth_data$school_year))), big.mark = ","),
     format(length(unique(growth_data$teacher_id)), big.mark = ","),
+    format(sum(growth_data$has_prior_year == 1), big.mark = ","),
+    format_num(mean(growth_data$section_size), 1),
     format_num(mean(growth_data$boy_score), 1),
     format_num(mean(growth_data$eoy_score), 1),
     format_num(mean(growth_data$score_gain), 1),

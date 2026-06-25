@@ -1,0 +1,8 @@
+"Metric","Value","DisplayValue"
+"Selected locked-holdout RMSE",4.69323833853993,"4.693"
+"Naive locked-holdout RMSE",4.95997298006233,"4.960"
+"Locked-holdout RMSE lift",0.0537774384244835,"5.4%"
+"Selected locked-holdout MAE",3.73892254895879,"3.739"
+"Naive locked-holdout MAE",4.02643113676447,"4.026"
+"Locked-holdout MAE lift",0.0714053160329767,"7.1%"
+"Locked-holdout gain R-squared",0.0972292046445081,"0.097"

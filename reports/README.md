@@ -14,20 +14,41 @@ Other useful report files:
 - `assessment_growth_section_performance_report.md`: GitHub-readable Markdown
   version of the full report.
 - `growth_extract_profile.csv`: BOY/EOY paired extract summary.
-- `growth_model_comparison.csv`: repeated-CV, temporal-validation, and
+- `growth_model_comparison.csv`: repeated-CV, rolling-origin temporal, and
   latest-year expected-growth model comparison.
 - `growth_model_comparison_display.csv`: reviewer-facing model-comparison
   table.
 - `growth_model_search_grid.csv`: full candidate grid with family, tuning,
   eligibility, validation metrics, AIC/BIC where available, and leakage status.
+- `growth_model_strength.csv`: naive benchmark comparison for the selected
+  expected-growth baseline.
 - `growth_model_family_summary.csv`: best candidate by model family.
 - `growth_model_selection_rationale.csv`: selected baseline and decision-rule
   summary.
 - `growth_final_metrics.csv`: selected model and validation summary.
-- `model_temporal_validation.csv`: leave-one-year-out validation results used
-  for baseline selection.
+- `model_temporal_validation.csv`: compatibility copy of rolling-origin
+  validation results used for baseline selection.
+- `rolling_origin_validation.csv`: year-by-year validation where each year is
+  predicted using only earlier years.
+- `process_validation.csv`: process-level holdout results for a fast subset of
+  candidate families.
+- `locked_holdout_validation.csv`: latest-year holdout review after the
+  operating baseline is selected.
+- `model_validity_targets.csv`: decision-grade target gates and pass/fail
+  status.
+- `model_signal_ceiling.csv`: aggregate signal ceiling diagnostics by student,
+  section, course, and teacher means.
+- `null_permutation_benchmark.csv`: null-label benchmark for prediction signal
+  sanity checking.
+- `feature_importance.csv`: locked-holdout permutation importance for selected
+  predictors.
+- `feature_stability.csv`: feature-importance stability across perturbations.
+- `flag_stability.csv`: bootstrap stability of latest-year review flags.
 - `model_bootstrap_validation.csv`: bootstrap uncertainty intervals for
   latest-year model performance.
+- `shrinkage_status.csv`: mixed-effects shrinkage review status.
+- `shrinkage_review.csv`: partially pooled teacher/course/section residual
+  review table.
 - `intervention_targets.csv`: latest-year teacher, course, and section review
   targets with intervals, p-values, q-values, and decision labels.
 - `latest_teacher_review.csv`: latest-year teacher-level review table.

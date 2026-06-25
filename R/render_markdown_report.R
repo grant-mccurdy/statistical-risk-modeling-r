@@ -6,13 +6,25 @@ required_tables <- c(
   file.path("reports", "growth_extract_profile.csv"),
   file.path("reports", "growth_model_comparison_display.csv"),
   file.path("reports", "growth_model_search_grid.csv"),
+  file.path("reports", "growth_model_strength.csv"),
   file.path("reports", "growth_model_family_summary.csv"),
   file.path("reports", "growth_model_selection_rationale.csv"),
   file.path("reports", "growth_shape_review.csv"),
   file.path("reports", "growth_final_metrics.csv"),
   file.path("reports", "model_dependency_status.csv"),
   file.path("reports", "model_temporal_validation.csv"),
+  file.path("reports", "rolling_origin_validation.csv"),
+  file.path("reports", "process_validation.csv"),
+  file.path("reports", "locked_holdout_validation.csv"),
+  file.path("reports", "model_validity_targets.csv"),
+  file.path("reports", "feature_importance.csv"),
+  file.path("reports", "feature_stability.csv"),
+  file.path("reports", "flag_stability.csv"),
+  file.path("reports", "null_permutation_benchmark.csv"),
+  file.path("reports", "model_signal_ceiling.csv"),
   file.path("reports", "model_bootstrap_validation.csv"),
+  file.path("reports", "shrinkage_status.csv"),
+  file.path("reports", "shrinkage_review.csv"),
   file.path("reports", "future_review_priorities.csv"),
   file.path("reports", "intervention_targets.csv"),
   file.path("reports", "latest_teacher_review.csv"),
@@ -56,6 +68,14 @@ profile_value <- function(measure_name, default = "") {
   value[1]
 }
 
+strength_value <- function(measure_name, default = "") {
+  value <- model_strength$Value[model_strength$Measure == measure_name]
+  if (length(value) == 0 || is.na(value[1])) {
+    return(default)
+  }
+  value[1]
+}
+
 as_report_num <- function(x) {
   suppressWarnings(as.numeric(gsub(",", "", x)))
 }
@@ -66,7 +86,35 @@ signed_text <- function(x, digits = 2) {
 }
 
 artifact_ref <- function(path) {
-  paste0("[", path, "](", basename(path), ")")
+  file <- basename(path)
+  labels <- c(
+    "intervention_targets.csv" = "decision table",
+    "growth_model_comparison_display.csv" = "model comparison",
+    "growth_model_search_grid.csv" = "model search grid",
+    "growth_model_strength.csv" = "model strength",
+    "growth_model_family_summary.csv" = "family summary",
+    "growth_model_selection_rationale.csv" = "selection rationale",
+    "model_temporal_validation.csv" = "temporal validation",
+    "rolling_origin_validation.csv" = "rolling-origin validation",
+    "process_validation.csv" = "process validation",
+    "locked_holdout_validation.csv" = "locked holdout",
+    "model_validity_targets.csv" = "validity targets",
+    "feature_importance.csv" = "feature importance",
+    "feature_stability.csv" = "feature stability",
+    "flag_stability.csv" = "flag stability",
+    "null_permutation_benchmark.csv" = "null benchmark",
+    "model_signal_ceiling.csv" = "signal ceiling",
+    "model_bootstrap_validation.csv" = "bootstrap validation",
+    "latest_teacher_review.csv" = "teacher review",
+    "latest_course_review.csv" = "course review",
+    "latest_section_review.csv" = "section review",
+    "shrinkage_status.csv" = "shrinkage status",
+    "shrinkage_review.csv" = "shrinkage review",
+    "section_adjusted_signals.csv" = "section signals",
+    "growth_final_metrics.csv" = "selected-model metrics"
+  )
+  label <- ifelse(file %in% names(labels), unname(labels[file]), file)
+  paste0("[", label, "](", file, ")")
 }
 
 top_n <- function(df, n = 10) {
@@ -98,8 +146,14 @@ pretty_target <- function(target) {
 
 short_model_name <- function(model) {
   labels <- c(
+    "Naive prior-year mean growth" = "Naive mean growth",
     "Growth linear benchmark" = "Growth linear",
     "Growth readiness model" = "Growth readiness",
+    "Growth history-composition model" = "Growth history/composition",
+    "Growth history interaction model" = "Growth history interactions",
+    "Growth feature discovery model" = "Feature discovery LM",
+    "Growth future planning benchmark" = "Future planning",
+    "Growth spline history model" = "Spline history",
     "Growth polynomial degree 2" = "Growth poly d2",
     "Growth polynomial degree 3" = "Growth poly d3",
     "Growth interaction model" = "Growth interactions",
@@ -114,16 +168,50 @@ short_model_name <- function(model) {
     "Growth random forest 1" = "RF 1",
     "Growth random forest 2" = "RF 2",
     "Growth random forest 3" = "RF 3",
+    "Growth ranger forest 1" = "Ranger 1",
     "Growth gradient boosting 1" = "GBM 1",
     "Growth gradient boosting 2" = "GBM 2",
     "Growth gradient boosting 3" = "GBM 3",
+    "Growth ridge" = "Growth ridge",
+    "Growth elastic net" = "Growth elastic net",
+    "Growth lasso" = "Growth lasso",
+    "Growth MARS 1" = "MARS 1",
+    "Growth MARS 2" = "MARS 2",
+    "Growth stacked ensemble" = "Growth stacked ensemble",
     "EOY readiness benchmark" = "EOY readiness",
     "EOY interaction benchmark" = "EOY interaction",
     "Teacher/course leakage benchmark" = "Leakage check",
-    "Growth ensemble balanced" = "Growth ensemble balanced",
-    "Growth ensemble nonlinear weighted" = "Growth ensemble nonlinear weighted"
+    "Growth ensemble balanced" = "Ensemble balanced",
+    "Growth ensemble nonlinear weighted" = "Ensemble weighted",
+    "Growth ensemble discovery weighted" = "Discovery ensemble"
   )
   ifelse(model %in% names(labels), unname(labels[model]), model)
+}
+
+short_family_name <- function(family) {
+  labels <- c(
+    "Naive baseline" = "Naive",
+    "Validation ensemble" = "Ensemble",
+    "Stacked validation ensemble" = "Stacked",
+    "Non-parametric boosting" = "Boosting",
+    "Non-parametric random forest" = "RF",
+    "Non-parametric ranger forest" = "Ranger",
+    "Non-parametric tree" = "Tree",
+    "Adaptive spline MARS" = "MARS",
+    "Semi-parametric GAM" = "GAM",
+    "Feature-engineered parametric" = "Feature LM",
+    "Natural spline regression" = "Spline",
+    "Regularized regression" = "Regularized",
+    "Parametric polynomial" = "Polynomial",
+    "Parametric linear" = "Linear",
+    "Parametric interactions" = "Interactions",
+    "Parametric cyclic" = "Cyclic",
+    "Parametric history/composition" = "History",
+    "Lagged teacher/course context" = "Future context",
+    "EOY-derived benchmark" = "EOY benchmark",
+    "Leakage benchmark" = "Leakage"
+  )
+  ifelse(family %in% names(labels), unname(labels[family]), family)
 }
 
 short_section_label <- function(section) {
@@ -234,19 +322,94 @@ compact_intervention_targets <- function(df, n = 14) {
   )
 }
 
+shrinkage_priority <- function(decision) {
+  priorities <- c(
+    "Shrunken intervention" = 1,
+    "Shrunken positive" = 2,
+    "Monitor" = 3,
+    "Insufficient sample" = 4,
+    "In range" = 5
+  )
+  out <- priorities[decision]
+  out[is.na(out)] <- 9
+  as.integer(out)
+}
+
+compact_shrinkage_review <- function(df, n = 12) {
+  if (nrow(df) == 0) {
+    return(df)
+  }
+  df$PriorityOrder <- shrinkage_priority(df$Decision)
+  df$EffectValue <- as_report_num(df$`Shrunken gap`)
+  df$AbsEffect <- abs(df$EffectValue)
+  flagged <- df[
+    df$Decision != "In range" & df$Decision != "Insufficient sample",
+    ,
+    drop = FALSE
+  ]
+  if (nrow(flagged) == 0) {
+    flagged <- df[df$Decision == "In range", , drop = FALSE]
+    if (nrow(flagged) == 0) {
+      flagged <- df
+    }
+    flagged <- flagged[order(-flagged$AbsEffect), , drop = FALSE]
+  } else {
+    flagged <- flagged[order(flagged$PriorityOrder, flagged$EffectValue), , drop = FALSE]
+  }
+  flagged <- top_n(flagged, n)
+  target <- flagged$Target
+  target[flagged$Level == "Course"] <- pretty_course(target[flagged$Level == "Course"])
+  target[flagged$Level == "Section"] <- short_section_label(target[flagged$Level == "Section"])
+  decision_label <- c(
+    "Shrunken intervention" = "Intervention",
+    "Shrunken positive" = "Bright spot",
+    "Monitor" = "Monitor",
+    "Insufficient sample" = "Small n",
+    "In range" = "In range"
+  )
+  decision <- ifelse(flagged$Decision %in% names(decision_label),
+    unname(decision_label[flagged$Decision]),
+    flagged$Decision
+  )
+  data.frame(
+    Slice = flagged$Level,
+    Target = target,
+    N = flagged$N,
+    `Raw gap` = signed_text(flagged$`Raw gap`, 2),
+    `Shrunken gap` = signed_text(flagged$`Shrunken gap`, 2),
+    `95% CI` = flagged$`95% CI`,
+    q = flagged$`q-value`,
+    Decision = decision,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
 profile <- read_display_csv(file.path("reports", "growth_extract_profile.csv"))
 model_comparison <- read_display_csv(
   file.path("reports", "growth_model_comparison_display.csv"),
   check_names = FALSE
 )
 model_search_grid <- read_display_csv(file.path("reports", "growth_model_search_grid.csv"))
+model_strength <- read_display_csv(file.path("reports", "growth_model_strength.csv"))
 family_summary <- read_display_csv(file.path("reports", "growth_model_family_summary.csv"))
 selection_rationale <- read_display_csv(file.path("reports", "growth_model_selection_rationale.csv"))
 shape_review <- read_display_csv(file.path("reports", "growth_shape_review.csv"))
 final_metrics <- read_display_csv(file.path("reports", "growth_final_metrics.csv"))
 dependency_status <- read_display_csv(file.path("reports", "model_dependency_status.csv"))
 temporal_validation <- read_display_csv(file.path("reports", "model_temporal_validation.csv"))
+rolling_origin_validation <- read_display_csv(file.path("reports", "rolling_origin_validation.csv"))
+process_validation <- read_display_csv(file.path("reports", "process_validation.csv"))
+locked_holdout_validation <- read_display_csv(file.path("reports", "locked_holdout_validation.csv"))
+model_validity_targets <- read_display_csv(file.path("reports", "model_validity_targets.csv"))
+feature_importance <- read_display_csv(file.path("reports", "feature_importance.csv"))
+feature_stability <- read_display_csv(file.path("reports", "feature_stability.csv"))
+flag_stability <- read_display_csv(file.path("reports", "flag_stability.csv"))
+null_permutation_benchmark <- read_display_csv(file.path("reports", "null_permutation_benchmark.csv"))
+model_signal_ceiling <- read_display_csv(file.path("reports", "model_signal_ceiling.csv"))
 bootstrap_validation <- read_display_csv(file.path("reports", "model_bootstrap_validation.csv"))
+shrinkage_status <- read_display_csv(file.path("reports", "shrinkage_status.csv"))
+shrinkage_review <- read_display_csv(file.path("reports", "shrinkage_review.csv"))
 future_priorities <- read_display_csv(file.path("reports", "future_review_priorities.csv"))
 intervention_targets <- read_display_csv(file.path("reports", "intervention_targets.csv"))
 latest_teacher_review <- read_display_csv(file.path("reports", "latest_teacher_review.csv"))
@@ -267,6 +430,7 @@ names(model_comparison) <- c(
   "Temporal EOY R2", "Latest RMSE", "Latest MAE", "Latest R2",
   "Latest EOY R2", "Train R2", "Adj R2", "AIC", "BIC", "Delta"
 )
+names(model_strength) <- c("Measure", "Value")
 names(family_summary) <- c(
   "Family", "Candidates", "Eligible", "Best model", "Selected family",
   "Best temporal RMSE", "Best delta RMSE", "Best temporal MAE",
@@ -279,6 +443,23 @@ names(shape_review) <- c(
   "Temporal RMSE", "Latest RMSE"
 )
 names(dependency_status) <- c("Package", "Installed")
+names(model_validity_targets) <- c(
+  "Metric", "Minimum", "Decision grade", "Stretch", "Actual", "Direction",
+  "Evidence role", "Status", "Actual display", "Decision display"
+)
+names(feature_importance) <- c("Feature", "RMSE increase", "RMSE increase SD", "Rank")
+names(feature_stability) <- c("Feature", "Positive importance", "Top-quartile importance", "Rank")
+names(flag_stability) <- c(
+  "Level", "Target", "N", "Adjusted gap", "Decision", "Stability",
+  "Required stability", "Status"
+)
+names(locked_holdout_validation) <- c("Metric", "Value", "Display value")
+names(model_signal_ceiling) <- c("Diagnostic", "Value", "Display value")
+names(shrinkage_status) <- c("Measure", "Value")
+names(shrinkage_review) <- c(
+  "Level", "Target", "N", "Raw gap", "Shrunken gap", "95% CI",
+  "p-value", "q-value", "Decision"
+)
 names(section_ttests) <- c(
   "Section", "Teacher", "Course", "Year", "N", "BOY", "EOY",
   "Gain", "95% CI", "p-value", "q-value"
@@ -308,7 +489,11 @@ selected_method <- metric_value("Selected method")
 selected_family <- metric_value("Selected family")
 selected_tuned <- metric_value("Selected tuned parameters")
 selected_tuned_text <- if (selected_model == "Growth ensemble balanced") {
-  "an equal-weight blend of gradient boosting, GAM, and degree-3 polynomial growth predictions"
+  "an equal-weight blend of gradient boosting, GAM, elastic-net, and history/composition growth predictions"
+} else if (selected_model == "Growth ensemble nonlinear weighted") {
+  "a GBM-weighted blend of nonlinear, regularized, and history/composition growth predictions"
+} else if (selected_model == "Growth stacked ensemble") {
+  "an out-of-fold learned blend of nonlinear, regularized, and history/composition growth predictions"
 } else {
   selected_tuned
 }
@@ -333,6 +518,12 @@ latest_gain_mae <- metric_value("Latest-year expected-gain MAE")
 latest_gain_r2 <- metric_value("Latest-year expected-gain R-squared")
 latest_eoy_r2 <- metric_value("Latest-year EOY R-squared")
 latest_section_groups <- metric_value("Latest-year section groups")
+temporal_rmse_improvement <- strength_value("Temporal RMSE improvement percent")
+latest_rmse_improvement <- strength_value("Latest-year RMSE improvement percent")
+latest_mae_improvement <- strength_value("Latest-year MAE improvement percent")
+section_mean_r2 <- strength_value("Latest-year section-mean gain R-squared")
+teacher_mean_r2 <- strength_value("Latest-year teacher-mean gain R-squared")
+course_mean_r2 <- strength_value("Latest-year course-mean gain R-squared")
 
 selected_row <- model_comparison[model_comparison$Selected == "Yes", , drop = FALSE]
 eligible_model_rows <- model_comparison[
@@ -364,6 +555,17 @@ priority_target_report <- compact_intervention_targets(
 if (nrow(priority_target_report) == 0) {
   priority_target_report <- compact_intervention_targets(intervention_targets, 8)
 }
+front_priority_report <- compact_intervention_targets(
+  intervention_targets[
+    intervention_targets$Decision == "Intervention target",
+    ,
+    drop = FALSE
+  ],
+  5
+)
+if (nrow(front_priority_report) == 0) {
+  front_priority_report <- priority_target_report
+}
 
 decision_counts <- data.frame(
   Slice = c("Teachers", "Courses", "Sections"),
@@ -377,39 +579,183 @@ decision_counts <- data.frame(
   check.names = FALSE
 )
 
+model_strength_report <- model_strength[
+  model_strength$Measure %in% c(
+    "Naive temporal RMSE",
+    "Selected temporal RMSE",
+    "Temporal RMSE improvement percent",
+    "Naive latest-year RMSE",
+    "Selected latest-year RMSE",
+    "Latest-year RMSE improvement percent",
+    "Naive latest-year MAE",
+    "Selected latest-year MAE",
+    "Latest-year MAE improvement percent",
+    "Selected latest-year gain R-squared",
+    "Selected latest-year EOY R-squared",
+    "Latest-year section-mean gain R-squared",
+    "Latest-year teacher-mean gain R-squared",
+    "Latest-year course-mean gain R-squared"
+  ),
+  ,
+  drop = FALSE
+]
+model_strength_report$Measure <- c(
+  "Naive temporal RMSE",
+  "Selected temporal RMSE",
+  "Temporal RMSE improvement",
+  "Naive latest-year RMSE",
+  "Selected latest-year RMSE",
+  "Latest-year RMSE improvement",
+  "Naive latest-year MAE",
+  "Selected latest-year MAE",
+  "Latest-year MAE improvement",
+  "Latest-year gain R-squared",
+  "Latest-year EOY R-squared",
+  "Section-mean gain R-squared",
+  "Teacher-mean gain R-squared",
+  "Course-mean gain R-squared"
+)
+
+target_status_counts <- table(model_validity_targets$Status)
+primary_targets <- model_validity_targets[
+  model_validity_targets$`Evidence role` == "Primary gate",
+  ,
+  drop = FALSE
+]
+primary_pass_count <- sum(primary_targets$Status == "Pass")
+primary_total_count <- nrow(primary_targets)
+decision_grade_status <- ifelse(
+  primary_pass_count == primary_total_count &&
+    all(model_validity_targets$Status[model_validity_targets$`Evidence role` == "Calibration gate"] == "Pass"),
+  "decision-grade",
+  "directional review"
+)
+validity_report <- model_validity_targets[
+  model_validity_targets$Metric %in% c(
+    "Rolling RMSE lift vs naive",
+    "Rolling MAE lift vs naive",
+    "Temporal gain R-squared",
+    "Section mean gain R-squared",
+    "Course mean gain R-squared",
+    "Teacher mean gain R-squared",
+    "Overall residual bias",
+    "Maximum subgroup residual bias"
+  ),
+  c("Metric", "Decision display", "Actual display", "Status"),
+  drop = FALSE
+]
+names(validity_report) <- c("Gate", "Decision-grade", "Actual", "Status")
+
+feature_importance_report <- top_n(feature_importance, 10)
+feature_importance_report$Feature <- gsub("_", " ", feature_importance_report$Feature)
+feature_importance_report$`RMSE increase` <- format_num(as_report_num(feature_importance_report$`RMSE increase`), 3)
+feature_importance_report$`RMSE increase SD` <- format_num(as_report_num(feature_importance_report$`RMSE increase SD`), 3)
+feature_importance_report <- feature_importance_report[
+  ,
+  c("Feature", "RMSE increase", "RMSE increase SD"),
+  drop = FALSE
+]
+names(feature_importance_report) <- c("Feature", "RMSE lift if permuted", "SD")
+
+feature_stability_report <- top_n(feature_stability, 10)
+feature_stability_report$Feature <- gsub("_", " ", feature_stability_report$Feature)
+feature_stability_report$`Positive importance` <- format_pct(as_report_num(feature_stability_report$`Positive importance`), 0)
+feature_stability_report$`Top-quartile importance` <- format_pct(as_report_num(feature_stability_report$`Top-quartile importance`), 0)
+feature_stability_report <- feature_stability_report[
+  ,
+  c("Feature", "Positive importance", "Top-quartile importance"),
+  drop = FALSE
+]
+
+flag_stability_report <- flag_stability[
+  flag_stability$Decision != "In range" &
+    flag_stability$Decision != "Insufficient sample",
+  ,
+  drop = FALSE
+]
+flag_stability_report <- flag_stability_report[
+  order(as_report_num(flag_stability_report$Stability), decreasing = TRUE),
+  ,
+  drop = FALSE
+]
+flag_stability_report <- top_n(flag_stability_report, 10)
+flag_stability_report$`Adjusted gap` <- signed_text(flag_stability_report$`Adjusted gap`, 2)
+flag_stability_report$Stability <- format_pct(as_report_num(flag_stability_report$Stability), 0)
+flag_stability_report$`Required stability` <- format_pct(as_report_num(flag_stability_report$`Required stability`), 0)
+flag_stability_report <- flag_stability_report[
+  ,
+  c("Level", "Target", "N", "Adjusted gap", "Decision", "Stability", "Status"),
+  drop = FALSE
+]
+
+holdout_report <- locked_holdout_validation[
+  ,
+  c("Metric", "Display value"),
+  drop = FALSE
+]
+names(holdout_report) <- c("Metric", "Value")
+
+signal_ceiling_report <- model_signal_ceiling[
+  ,
+  c("Diagnostic", "Display value"),
+  drop = FALSE
+]
+names(signal_ceiling_report) <- c("Diagnostic", "Value")
+
+shrinkage_report <- compact_shrinkage_review(shrinkage_review, 12)
+
 model_comparison_compact <- model_comparison
 model_comparison_compact$Model <- short_model_name(model_comparison_compact$Model)
+model_comparison_compact$Family <- short_family_name(model_comparison_compact$Family)
+model_comparison_compact$Interpretation <- ifelse(
+  model_comparison_compact$Selected == "Yes",
+  "Selected",
+  ifelse(
+    model_comparison$Role == "Excluded leakage benchmark",
+    "Leakage only",
+    ifelse(
+      model_comparison_compact$Eligible == "Yes" &
+        as_report_num(model_comparison_compact$Delta) <= 0.10,
+      "Near tie",
+      "Not selected"
+    )
+  )
+)
 model_rows <- unique(c(
-  which(model_comparison_compact$Eligible == "Yes")[seq_len(min(10, sum(model_comparison_compact$Eligible == "Yes")))],
+  which(model_comparison_compact$Eligible == "Yes")[seq_len(min(7, sum(model_comparison_compact$Eligible == "Yes")))],
   which(model_comparison$Role == "Excluded leakage benchmark")[1]
 ))
 model_rows <- model_rows[!is.na(model_rows)]
 model_comparison_report <- model_comparison_compact[
   model_rows,
   c(
-    "Model", "Selected", "Family", "CV RMSE",
-    "Temporal RMSE", "Temporal R2", "Latest RMSE", "Latest R2"
+    "Model", "Family", "Selected",
+    "Temporal RMSE", "Latest RMSE", "Latest MAE", "Latest R2",
+    "Interpretation"
   ),
   drop = FALSE
 ]
 names(model_comparison_report) <- c(
-  "Model", "Use", "Family", "CV RMSE",
-  "Temporal RMSE", "Temporal R2", "Latest RMSE", "Latest R2"
+  "Candidate model", "Model type", "Used?",
+  "Rolling RMSE", "Latest RMSE", "Latest MAE", "Gain R2",
+  "Read"
 )
 
 family_summary_report <- family_summary[
   ,
   c(
-    "Family", "Candidates", "Eligible", "Best model", "Selected family",
-    "Best temporal RMSE", "Best temporal R2", "Best latest RMSE"
+    "Family", "Best model", "Selected family",
+    "Best temporal RMSE", "Best latest RMSE"
   ),
   drop = FALSE
 ]
+family_summary_report$Family <- short_family_name(family_summary_report$Family)
 family_summary_report[["Best model"]] <- short_model_name(family_summary_report[["Best model"]])
 names(family_summary_report) <- c(
-  "Family", "Candidates", "Eligible", "Best model", "Selected",
-  "Temporal RMSE", "Temporal R2", "Latest RMSE"
+  "Family", "Best model", "Selected",
+  "Temporal RMSE", "Latest RMSE"
 )
+family_summary_report <- top_n(family_summary_report, 8)
 
 shape_review_report <- shape_review[
   ,
@@ -575,6 +921,23 @@ if (nrow(best_overall_row) > 0 &&
   overall_context <- ""
 }
 
+selection_result_text <- if (nrow(selected_row) > 0 &&
+                             selected_row$Model == best_temporal_row$Model) {
+  paste0(
+    "The best eligible direct-growth rolling-origin RMSE was **", best_temporal_row$`Temporal RMSE`,
+    "** from **", best_temporal_row$Model,
+    "**, so it is the operating baseline. Repeated-CV RMSE remains a stability check for candidates that are practically tied on rolling-origin RMSE."
+  )
+} else {
+  paste0(
+    "The best eligible direct-growth rolling-origin RMSE was **", best_temporal_row$`Temporal RMSE`,
+    "** from **", best_temporal_row$Model, "**. ",
+    "The selected model's temporal RMSE was **", selected_row$`Temporal RMSE`,
+    "**, a difference of ", selection_delta,
+    " points. Because that difference is below the 0.01-point practical tolerance, the selected model is the operating baseline because it has the strongest repeated-CV RMSE among the temporally tied direct-growth candidates."
+  )
+}
+
 report_lines <- c(
   "# Assessment Growth and Section Performance Analytics in R",
   "",
@@ -591,41 +954,70 @@ report_lines <- c(
     "It asks whether the most recent actual growth was materially above or below an expected-growth baseline trained only on prior years."
   ),
   "",
+  "## How To Read The Model Results",
+  "",
+  paste0(
+    "The model is **not** intended to forecast each student's exact score gain. ",
+    "Individual growth is noisy because similar students can improve by different amounts for reasons not fully captured in the extract. ",
+    "For that reason, the latest-year individual gain R-squared of **", latest_gain_r2,
+    "** is treated as a signal-strength diagnostic, not the headline business result."
+  ),
+  "",
+  paste0(
+    "The business question is group-level: after adjusting for starting score, readiness, attendance, prior history, course track, grade level, and section composition, ",
+    "did a teacher, course, or section produce more or less average growth than expected? ",
+    "That comparison is more stable because student-level noise partly averages out across groups."
+  ),
+  "",
+  paste0(
+    "The EOY R-squared of **", latest_eoy_r2,
+    "** is reported only to show that final score is mechanically easier to predict from BOY score. ",
+    "It should not be read as evidence that the model precisely predicts improvement. ",
+    "The relevant evidence is out-of-sample lift versus a naive baseline, aggregate fit, residual calibration, uncertainty intervals, and flag stability."
+  ),
+  "",
   paste0(
     "The baseline selected for operations is **", selected_model, "**. ",
     "It predicts **score gain directly** using a ", selected_family,
     " specification. The selected tuning choice is ", selected_tuned_text, ". ",
-    "The latest-year expected-gain RMSE is **", latest_gain_rmse,
-    "** points and the latest-year MAE is **", latest_gain_mae, "** points."
+    "Against a naive prior-year mean-growth baseline, the selected model improves temporal RMSE by **",
+    temporal_rmse_improvement, "** and latest-year RMSE by **", latest_rmse_improvement, "**."
   ),
   "",
   paste0(
-    "The latest-year gain R-squared is **", latest_gain_r2,
-    "**; EOY R-squared is **", latest_eoy_r2,
-    "** and is reported only as secondary context. EOY is easier to predict because BOY score mechanically explains much of final score. ",
-    "The workflow uses the direct-growth model to create a fair expected-growth baseline, then makes decisions from aggregate teacher, course, and section residuals with bootstrap uncertainty checks."
+    "Under the stricter validity framework, this model is best described as **",
+    decision_grade_status,
+    "** evidence: ", primary_pass_count, " of ", primary_total_count,
+    " primary gates passed. The model is useful for structured review and prioritization, but the report should not overstate it as a definitive teacher or section rating system."
   ),
+  "",
+  paste0(
+    "Because decisions are made at aggregate review levels, the planning-level fit is more relevant than the individual gain R-squared: latest-year gain R-squared is **",
+    section_mean_r2, "** for section means, **", course_mean_r2,
+    "** for course means, and **", teacher_mean_r2, "** for teacher means."
+  ),
+  "",
+  "The workflow uses the direct-growth model to create a fair expected-growth baseline, then makes decisions from aggregate teacher, course, and section residuals with bootstrap uncertainty checks.",
   "",
   markdown_table(decision_counts),
   "",
-  markdown_table(priority_target_report),
+  markdown_table(front_priority_report),
   "",
   paste0(
-    "The full decision table, including watch-list rows, is generated as ",
+    "Bright spots, watch-list rows, and the full decision table are generated as ",
     artifact_ref("reports/intervention_targets.csv"), "."
   ),
-  "",
-  "<!-- PDF_PAGE_BREAK -->",
   "",
   "## Plain-English Method",
   "",
   "1. Build a paired BOY/EOY growth extract from public-safe assessment records.",
   "2. Define the business outcome as score gain: EOY score minus BOY score.",
-  "3. Train candidate expected-growth models on prior years only, including parametric, smooth, tree-based, ensemble, and excluded leakage-check specifications.",
-  "4. Select the operating baseline using leave-one-year-out temporal validation, with repeated CV and bootstrap checks as supporting evidence.",
-  "5. Score the latest year against that prior-year baseline.",
-  "6. Aggregate observed-minus-expected growth by teacher, course, and section.",
-  "7. Flag review targets only when the gap is large enough to matter and the uncertainty check supports follow-up.",
+  "3. Create leakage-safe engineered features from BOY data and prior completed years: multi-year student history, section composition, transformations, and interaction terms.",
+  "4. Search candidate expected-growth models across parametric, spline, GAM, regularized, tree-based, forest, boosting, MARS, ensemble, and excluded leakage-check specifications.",
+  "5. Select the operating baseline using rolling-origin temporal validation, with repeated CV, process validation, locked-holdout review, bootstrap checks, and feature-stability diagnostics as supporting evidence.",
+  "6. Score the latest year against the prior-year baseline.",
+  "7. Aggregate observed-minus-expected growth by teacher, course, and section.",
+  "8. Flag review targets only when the gap is large enough to matter and the uncertainty check supports follow-up.",
   "",
   paste0(
     "This design separates the prediction problem from the decision problem. ",
@@ -638,8 +1030,9 @@ report_lines <- c(
   paste0("2. The training window is ", training_years, "; the action year is ", action_year, "."),
   paste0("3. The average raw gain across the full extract is ", mean_gain, " points; the latest-year raw gain is ", latest_gain, " points."),
   paste0("4. The model search tested ", candidate_count, " candidate baselines across parametric, nonlinear, ensemble, and leakage-check families."),
-  paste0("5. The selected direct-growth baseline has temporal expected-gain RMSE ", temporal_gain_rmse, ", temporal MAE ", temporal_gain_mae, ", and latest-year expected-gain RMSE ", latest_gain_rmse, "."),
-  "6. Teacher, course, and section flags are audit priorities. They are not automatic personnel ratings or causal claims.",
+  paste0("5. The selected direct-growth baseline has temporal expected-gain RMSE ", temporal_gain_rmse, ", temporal MAE ", temporal_gain_mae, ", latest-year RMSE ", latest_gain_rmse, ", and latest-year MAE ", latest_gain_mae, "."),
+  "6. The modest individual gain R-squared is expected for a noisy improvement outcome; it is not the main business score.",
+  "7. Teacher, course, and section flags are audit priorities. They are not automatic personnel ratings or causal claims.",
   "",
   "## Data Audit",
   "",
@@ -647,37 +1040,40 @@ report_lines <- c(
   "",
   markdown_table(profile),
   "",
-  "<!-- PDF_PAGE_BREAK -->",
-  "",
   "## Model Selection",
   "",
   paste0(
-    "The model search used ", training_records, " prior-year pairs and held out ",
+    "The model discovery system used ", training_records, " prior-year pairs and held out ",
     action_records, " latest-year pairs for action-year evaluation. ",
-    "The primary selection metric is leave-one-year-out temporal expected-gain RMSE, not latest-year performance, so the system does not choose a model by looking at the year it later reviews."
+    "The primary selection metric is rolling-origin temporal expected-gain RMSE, not latest-year performance, so each validation year is treated like the future."
   ),
   "",
-  paste0(
-    "The best eligible direct-growth temporal RMSE was **", best_temporal_row$`Temporal RMSE`,
-    "** from **", best_temporal_row$Model, "**. ",
-    "The selected model's temporal RMSE was **", selected_row$`Temporal RMSE`,
-    "**, a difference of ", selection_delta,
-    " points. Because that difference is below the 0.01-point practical tolerance, the selected model is the operating baseline because it has the strongest repeated-CV RMSE among the temporally tied direct-growth candidates."
-  ),
+  selection_result_text,
   "",
   overall_context,
   "",
   "The model-search guardrails were:",
   "",
   "- Use direct BOY/EOY score gain as the operating target because that is the stakeholder performance metric.",
-  "- Select by temporal-CV RMSE so the baseline is judged on year-to-year generalization.",
-  "- Use repeated-CV RMSE as the tie-breaker when temporal-CV RMSE differs by less than 0.01 points.",
+  "- Select by rolling-origin temporal RMSE so the baseline is judged on future-facing generalization.",
+  "- Use repeated-CV RMSE as the tie-breaker when rolling-origin RMSE differs by less than 0.01 points.",
   "- Keep teacher, course, and section identifiers out of the operating baseline because those are the review slices.",
+  "- Use feature engineering only when the feature is available at BOY or from prior completed years.",
+  "- Refit the selected production model on all completed years only after model selection.",
+  "- Report individual gain R-squared as a signal-strength diagnostic, not as the headline business result.",
   "- Report EOY R-squared only as context because final score is mechanically easier to predict than growth.",
   "",
-  markdown_table(family_summary_report),
+  "The decision-grade target table below is intentionally strict. It prevents the project from claiming stronger performance judgment than the data support.",
   "",
-  markdown_table(shape_review_report),
+  markdown_table(validity_report),
+  "",
+  "The first strength check is whether the selected model beats a naive baseline that predicts the training-year mean gain for every record. This is the minimum bar for using a model as an expected-growth baseline.",
+  "",
+  markdown_table(model_strength_report),
+  "",
+  "<!-- PDF_PAGE_BREAK -->",
+  "",
+  "The table below shows the strongest candidate baselines tested. The selected model was chosen by rolling-origin validation, not by whichever model looked best on the latest year. The leakage-check row is shown for transparency but is not eligible because it would absorb the teacher/course patterns the review layer is designed to detect.",
   "",
   markdown_table(model_comparison_report),
   "",
@@ -687,13 +1083,40 @@ report_lines <- c(
     ", ",
     artifact_ref("reports/growth_model_search_grid.csv"),
     ", ",
+    artifact_ref("reports/growth_model_strength.csv"),
+    ", ",
     artifact_ref("reports/growth_model_family_summary.csv"),
     ", ",
     artifact_ref("reports/growth_model_selection_rationale.csv"),
     ", ",
     artifact_ref("reports/model_temporal_validation.csv"),
+    ", ",
+    artifact_ref("reports/rolling_origin_validation.csv"),
+    ", ",
+    artifact_ref("reports/process_validation.csv"),
+    ", ",
+    artifact_ref("reports/locked_holdout_validation.csv"),
+    ", ",
+    artifact_ref("reports/model_validity_targets.csv"),
     ", and ",
     artifact_ref("reports/model_bootstrap_validation.csv"), "."
+  ),
+  "",
+  "## Feature Discovery",
+  "",
+  "The model search includes leakage-safe feature engineering: multi-year prior student growth, prior trend and volatility, BOY score bands, section composition, attendance mix, nonlinear basis terms, and selected interactions. The table below shows which features mattered most when permuted in the locked action-year data.",
+  "",
+  markdown_table(feature_importance_report),
+  "",
+  "Feature stability asks whether the same predictors continue to matter across repeated perturbations.",
+  "",
+  markdown_table(feature_stability_report),
+  "",
+  paste0(
+    "Feature artifacts: ",
+    artifact_ref("reports/feature_importance.csv"),
+    " and ",
+    artifact_ref("reports/feature_stability.csv"), "."
   ),
   "",
   "![Model search by family and tuned candidate](../figures/growth_model_search.png)",
@@ -729,6 +1152,23 @@ report_lines <- c(
     artifact_ref("reports/latest_course_review.csv"),
     ", and ",
     artifact_ref("reports/latest_section_review.csv"), "."
+  ),
+  "",
+  "A second review layer fits a mixed-effects shrinkage model on the latest-year residuals. It estimates teacher, course, and section effects at the same time and pulls noisier small-group estimates toward zero, so the strongest flags are less likely to be one-off small-section artifacts.",
+  "",
+  markdown_table(shrinkage_report),
+  "",
+  "Flag stability estimates how often a slice remains beyond the practical one-point gap threshold under bootstrap resampling. Directional rows should be reviewed with context; stable rows have stronger evidence for action.",
+  "",
+  markdown_table(flag_stability_report),
+  "",
+  paste0(
+    "Shrinkage artifacts: ",
+    artifact_ref("reports/shrinkage_status.csv"),
+    " and ",
+    artifact_ref("reports/shrinkage_review.csv"),
+    ". Flag-stability artifacts: ",
+    artifact_ref("reports/flag_stability.csv"), "."
   ),
   "",
   "<!-- PDF_PAGE_BREAK -->",
@@ -772,12 +1212,17 @@ report_lines <- c(
   "",
   paste0(
     "The baseline is strong for final-score expectation and weaker for individual gain variation. ",
-    "That pattern is expected: BOY score explains much of EOY score, while individual improvement contains more unobserved classroom, attendance, and assessment noise."
+    "That pattern is expected and is part of the interpretation, not something to hide: BOY score explains much of EOY score, while individual improvement contains more unobserved classroom, attendance, motivation, and assessment noise. ",
+    "For review decisions, the model is used to build expected growth and then aggregate residuals by teacher, course, and section."
   ),
   "",
   markdown_table(diagnostics_report),
   "",
   markdown_table(bootstrap_report),
+  "",
+  markdown_table(holdout_report),
+  "",
+  markdown_table(signal_ceiling_report),
   "",
   markdown_table(sensitivity_report),
   "",
@@ -798,7 +1243,7 @@ report_lines <- c(
   "",
   "## Conclusion",
   "",
-  "The project should be read as a statistical decision-support system, not as a simple prediction demo. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline, quantify uncertainty by slice, and translate the evidence into review priorities.",
+  "The project should be read as a statistical decision-support system, not as a simple prediction demo. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline at the group level, quantify uncertainty by slice, and translate the evidence into review priorities.",
   "",
   "The recommended stakeholder action is to review the flagged teacher, course, and section patterns before the next assessment cycle. Priority targets deserve support or investigation; positive anomalies deserve study for transferable practices; watch-list rows deserve context review before escalation.",
   "",
@@ -831,10 +1276,17 @@ executive_lines <- c(
   paste0(
     "**Baseline:** ", selected_model,
     " selected from ", candidate_count,
-    " candidates using direct-growth temporal validation. Temporal expected-gain RMSE is ",
-    temporal_gain_rmse, "; latest-year expected-gain RMSE is ",
-    latest_gain_rmse, "; latest-year EOY R-squared is ", latest_eoy_r2,
-    " for context."
+    " candidates using direct-growth temporal validation. It improves temporal RMSE by ",
+    temporal_rmse_improvement,
+    " and latest-year RMSE by ", latest_rmse_improvement,
+    " versus a naive mean-growth baseline."
+  ),
+  "",
+  paste0(
+    "**How to read performance:** the model is not a precise forecast of each student's score gain. ",
+    "Individual gain R-squared is ", latest_gain_r2,
+    ", while aggregate fit is stronger for teacher and course means. ",
+    "Use the baseline to compare group-level actual growth with expected growth, not as a student-level prediction score."
   ),
   "",
   paste0(
@@ -871,10 +1323,12 @@ model_card_lines <- c(
   "",
   paste0(
     "Selected baseline: ", selected_model,
-    ". The operating target is direct BOY/EOY score gain. Candidate families include linear baselines, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regression trees, random forests, gradient boosting, validation ensembles, EOY-derived benchmarks, and an excluded teacher/course ID leakage check."
+    ". The operating target is direct BOY/EOY score gain. Candidate families include a naive mean-growth benchmark, linear baselines, lagged-history and section-composition parametric models, polynomial terms, interaction surfaces, cyclic terms, GAM smooths, regularized regression, regression trees, random forests, gradient boosting, hand-weighted ensembles, stacked ensembles, EOY-derived benchmarks, and an excluded teacher/course ID leakage check."
   ),
   "",
   "## Validation",
+  "",
+  markdown_table(model_strength_report),
   "",
   markdown_table(appendix_metrics),
   "",
@@ -882,7 +1336,7 @@ model_card_lines <- c(
   "",
   "## Decision Layer",
   "",
-  "Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, and decision labels. The labels are audit priorities, not causal claims.",
+  "Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, mixed-effects shrinkage review, and decision labels. The labels are audit priorities, not causal claims.",
   "",
   "## Monitoring Recommendations",
   "",

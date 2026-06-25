@@ -1,4 +1,4 @@
-.PHONY: all data model report report-pdf validate report-rmd clean
+.PHONY: all data model deep-search report report-pdf validate report-rmd clean
 
 RSCRIPT ?= Rscript --vanilla
 
@@ -10,6 +10,8 @@ data:
 model: data
 	$(RSCRIPT) R/fit_growth_models.R
 
+deep-search: model
+
 report: model
 	$(RSCRIPT) R/render_markdown_report.R
 
@@ -18,6 +20,7 @@ report-pdf: report
 
 validate:
 	$(RSCRIPT) R/validate_public_safety.R
+	$(RSCRIPT) R/validate_model_outputs.R
 
 report-rmd:
 	$(RSCRIPT) -e "rmarkdown::render('reports/assessment_growth_section_performance_report.Rmd', output_format='github_document', knit_root_dir=getwd())"

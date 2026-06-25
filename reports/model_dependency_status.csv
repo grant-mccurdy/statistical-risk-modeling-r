@@ -1,5 +1,9 @@
 "Package","Installed"
 "mgcv",TRUE
 "randomForest",TRUE
+"ranger",TRUE
 "gbm",TRUE
 "rpart",TRUE
+"glmnet",TRUE
+"earth",TRUE
+"lme4",TRUE

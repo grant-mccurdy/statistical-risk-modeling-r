@@ -1,0 +1,3 @@
+"Measure","Value"
+"Mixed-effects shrinkage model","Run on latest-year action data; singular fit, use as supporting shrinkage check"
+"Formula","score_gain ~ expected_gain + (1 | teacher_id) + (1 | course_id) + (1 | section_id)"

@@ -39,8 +39,8 @@ public-safety notes.
 - **Headline metric:** average raw BOY/EOY gain is 5.72 points across 1,737
   paired records.
 - **Analytic layer:** compare observed gain with expected gain after controlling
-  for starting score/readiness, attendance, course track, grade level, and
-  school-year context.
+  for starting score/readiness, prior-year history, attendance, course track,
+  grade level, section composition, and school-year context.
 - **Guardrail:** use teacher/course/section signals for instructional review and
   follow-up, not automated teacher evaluation or personnel decisions.
 
@@ -51,11 +51,17 @@ public-safety notes.
 - Paired section improvement analysis and confidence intervals
 - Adjusted expected-growth modeling in R
 - Candidate-family comparison across direct-growth linear, polynomial,
-  interaction, cyclic, GAM, regression-tree, random-forest, gradient-boosting,
-  validation-ensemble, EOY-derived benchmark, and leakage-check specifications
-- Repeated cross-validation plus leave-one-year-out temporal validation
-- Latest-year action evaluation, bootstrap intervals, and residual diagnostics
+  history/composition, interaction, cyclic, GAM, regularized-regression,
+  regression-tree, random-forest, ranger-forest, gradient-boosting, adaptive
+  MARS, validation-ensemble, stacked-ensemble, EOY-derived benchmark, and
+  leakage-check specifications
+- Repeated cross-validation, rolling-origin temporal validation, process
+  validation, locked latest-year holdout review, feature-stability checks, and
+  null-permutation benchmarking
+- Latest-year action evaluation, bootstrap intervals, feature diagnostics, and
+  residual diagnostics
 - Reliability-weighted teacher/course/section decision flags
+- Mixed-effects shrinkage review for teacher/course/section residual patterns
 - BH-adjusted q-values for multiple-review control
 - Teacher/course review-priority views for instructional planning
 - Sensitivity checks comparing raw and adjusted section rankings
@@ -75,10 +81,11 @@ public-safety notes.
 
 ## Quick Start
 
-The core build uses R and `make`. If `mgcv`, `rpart`, `randomForest`, or `gbm`
-are installed, the model search includes GAM, regression-tree, random-forest,
-and gradient-boosting candidates; otherwise those optional families are skipped
-and documented.
+The core build uses R and `make`. If `mgcv`, `rpart`, `randomForest`, `gbm`,
+`glmnet`, `ranger`, `earth`, and `lme4` are installed, the model search includes GAM,
+regression-tree, random-forest, gradient-boosting, regularized-regression,
+adaptive MARS, stacked-ensemble, and mixed-effects shrinkage candidates;
+otherwise optional families are skipped and documented.
 
 ```bash
 cd /home/grant/repos/public/statistical-risk-modeling-r
@@ -92,6 +99,7 @@ Rscript --vanilla R/generate_synthetic_data.R
 Rscript --vanilla R/fit_growth_models.R
 Rscript --vanilla R/render_markdown_report.R
 Rscript --vanilla R/validate_public_safety.R
+Rscript --vanilla R/validate_model_outputs.R
 ```
 
 Optional PDF rendering is available when `rmarkdown`, Pandoc, and a LaTeX
@@ -111,6 +119,7 @@ statistical-risk-modeling-r/
 │   ├── fit_growth_models.R
 │   ├── render_markdown_report.R
 │   ├── run_pipeline.R
+│   ├── validate_model_outputs.R
 │   └── validate_public_safety.R
 ├── data/
 │   ├── raw/
@@ -148,16 +157,28 @@ The generated evidence packet includes:
 - `reports/growth_model_comparison.csv`
 - `reports/growth_model_comparison_display.csv`
 - `reports/growth_model_search_grid.csv`
+- `reports/growth_model_strength.csv`
 - `reports/growth_model_family_summary.csv`
 - `reports/growth_model_selection_rationale.csv`
 - `reports/growth_final_metrics.csv`
+- `reports/shrinkage_status.csv`
+- `reports/shrinkage_review.csv`
 - `reports/intervention_targets.csv`
 - `reports/latest_teacher_review.csv`
 - `reports/latest_course_review.csv`
 - `reports/latest_section_review.csv`
 - `reports/future_review_priorities.csv`
 - `reports/model_temporal_validation.csv`
+- `reports/rolling_origin_validation.csv`
+- `reports/process_validation.csv`
+- `reports/locked_holdout_validation.csv`
 - `reports/model_bootstrap_validation.csv`
+- `reports/model_validity_targets.csv`
+- `reports/model_signal_ceiling.csv`
+- `reports/null_permutation_benchmark.csv`
+- `reports/feature_importance.csv`
+- `reports/feature_stability.csv`
+- `reports/flag_stability.csv`
 - `reports/model_dependency_status.csv`
 - `reports/section_ttests.csv`
 - `reports/section_adjusted_signals.csv`
@@ -180,7 +201,7 @@ make data       # regenerates the modeling extract
 make model      # runs model comparison and diagnostics
 make report     # renders the Markdown report
 make report-pdf # renders the knitted PDF report
-make validate   # checks public-safety rules
+make validate   # checks public-safety and model-output rules
 ```
 
 ## Dependency Notes
@@ -188,7 +209,7 @@ make validate   # checks public-safety rules
 Install the optional modeling/reporting packages for the full portfolio build:
 
 ```r
-install.packages(c("mgcv", "rpart", "randomForest", "gbm", "rmarkdown", "knitr"))
+install.packages(c("mgcv", "rpart", "randomForest", "gbm", "glmnet", "ranger", "earth", "lme4", "rmarkdown", "knitr"))
 ```
 
 Then run:
