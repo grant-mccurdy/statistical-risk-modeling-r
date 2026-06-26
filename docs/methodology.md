@@ -148,15 +148,15 @@ It is used as supporting review evidence, not as the expected-growth baseline.
 
 Signal categories are:
 
-- Intervention target
-- Positive anomaly
-- Watch list
+- Priority review
+- Bright spot
+- Watch
 - In range
 - Insufficient sample
 
-The decision labels are audit priorities. They identify where stakeholders
-should review context, support needs, pacing, curriculum alignment, or
-transferable practices before the next cycle. They are not causal claims.
+The review labels are audit priorities. They identify where stakeholders should
+review context, support needs, pacing, curriculum alignment, or transferable
+practices before the next cycle. They are not causal claims.
 
 ## Teacher and Course Review Signals
 

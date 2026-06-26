@@ -11,6 +11,7 @@ required_files <- c(
   file.path("reports", "feature_importance.csv"),
   file.path("reports", "feature_stability.csv"),
   file.path("reports", "flag_stability.csv"),
+  file.path("reports", "review_evidence_reconciliation.csv"),
   file.path("reports", "null_permutation_benchmark.csv"),
   file.path("reports", "model_signal_ceiling.csv"),
   file.path("reports", "model_artifacts.rds")
@@ -23,9 +24,33 @@ if (length(missing_files) > 0) {
   errors <- c(errors, paste("Missing model artifact(s):", paste(missing_files, collapse = ", ")))
 } else {
   comparison <- read.csv(file.path("reports", "growth_model_comparison.csv"), stringsAsFactors = FALSE)
+  comparison_display <- read.csv(file.path("reports", "growth_model_comparison_display.csv"), stringsAsFactors = FALSE)
   strength <- read.csv(file.path("reports", "growth_model_strength.csv"), stringsAsFactors = FALSE)
   targets <- read.csv(file.path("reports", "model_validity_targets.csv"), stringsAsFactors = FALSE)
+  review_evidence <- read.csv(file.path("reports", "review_evidence_reconciliation.csv"), stringsAsFactors = FALSE)
   artifacts <- readRDS(file.path("reports", "model_artifacts.rds"))
+  legacy_review_labels <- c(
+    "Intervention target",
+    "Positive anomaly",
+    "Watch list",
+    "Shrunken intervention",
+    "Shrunken positive"
+  )
+
+  generated_csvs <- list.files("reports", pattern = "\\.csv$", full.names = TRUE)
+  legacy_exports <- generated_csvs[vapply(generated_csvs, function(path) {
+    text <- readLines(path, warn = FALSE)
+    any(vapply(legacy_review_labels, grepl, logical(1), x = paste(text, collapse = "\n"), fixed = TRUE))
+  }, logical(1))]
+  if (length(legacy_exports) > 0) {
+    errors <- c(
+      errors,
+      paste(
+        "Generated public CSVs contain legacy internal review labels:",
+        paste(legacy_exports, collapse = ", ")
+      )
+    )
+  }
 
   selected <- comparison[comparison$Selected, , drop = FALSE]
   naive <- comparison[comparison$Model == "Naive prior-year mean growth", , drop = FALSE]
@@ -38,6 +63,12 @@ if (length(missing_files) > 0) {
   }
 
   if (nrow(selected) == 1 && nrow(naive) == 1) {
+    if ("Temporal_Usable" %in% names(selected) && !isTRUE(selected$Temporal_Usable[1])) {
+      errors <- c(errors, "Selected model is not marked temporally usable.")
+    }
+    if ("Temporal_Failure_Count" %in% names(selected) && selected$Temporal_Failure_Count[1] > 0) {
+      errors <- c(errors, "Selected model has failed temporal validation folds.")
+    }
     if (selected$Temporal_RMSE >= naive$Temporal_RMSE) {
       errors <- c(errors, "Selected model does not beat naive benchmark on temporal RMSE.")
     }
@@ -46,6 +77,19 @@ if (length(missing_files) > 0) {
     }
     if (selected$Action_RMSE >= naive$Action_RMSE) {
       errors <- c(errors, "Selected model does not beat naive benchmark on latest-year RMSE.")
+    }
+  }
+
+  display_temporal <- suppressWarnings(as.numeric(comparison_display$Temporal_RMSE))
+  display_temporal <- display_temporal[!is.na(display_temporal)]
+  if (nrow(naive) == 1 && any(display_temporal > 3 * naive$Temporal_RMSE, na.rm = TRUE)) {
+    errors <- c(errors, "Reviewer-facing model comparison contains unexplained extreme temporal RMSE values.")
+  }
+  if ("Temporal_Status" %in% names(comparison_display)) {
+    unstable_display <- comparison_display$Temporal_Status != "Stable temporal validation"
+    unstable_numeric <- suppressWarnings(!is.na(as.numeric(comparison_display$Temporal_RMSE)))
+    if (any(unstable_display & unstable_numeric, na.rm = TRUE)) {
+      errors <- c(errors, "Unstable temporal candidates should not display numeric temporal RMSE values.")
     }
   }
 
@@ -98,6 +142,12 @@ if (length(missing_files) > 0) {
 
   if (!isTRUE(artifacts$selected_spec$selection_eligible)) {
     errors <- c(errors, "Selected model is not marked selection eligible.")
+  }
+
+  if (!"Review" %in% names(review_evidence)) {
+    errors <- c(errors, "Review evidence reconciliation is missing the Review column.")
+  } else if (any(review_evidence$Review %in% legacy_review_labels, na.rm = TRUE)) {
+    errors <- c(errors, "Review evidence should use public-facing priority-review labels.")
   }
 
   required_target_rows <- c(

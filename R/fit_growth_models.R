@@ -425,13 +425,14 @@ summarize_regression_cv <- function(cv_results) {
   summary[order(summary$CV_RMSE), ]
 }
 
-run_temporal_validation <- function(data, specs, years, seed = 20260623) {
+run_temporal_validation <- function(data, specs, years, seed = 20260623,
+                                    min_train_years = 1) {
   results <- list()
   counter <- 1
 
   for (validation_year in years) {
     validation_position <- match(validation_year, years)
-    if (is.na(validation_position) || validation_position <= 1) {
+    if (is.na(validation_position) || validation_position <= min_train_years) {
       next
     }
     prior_years <- years[seq_len(validation_position - 1)]
@@ -452,6 +453,7 @@ run_temporal_validation <- function(data, specs, years, seed = 20260623) {
         Role = spec$role,
         ValidationYear = validation_year,
         TrainingYears = paste(prior_years, collapse = ", "),
+        TrainingYearCount = length(prior_years),
         N = nrow(test_data),
         RMSE = metrics$Gain_RMSE,
         MAE = metrics$Gain_MAE,
@@ -467,16 +469,69 @@ run_temporal_validation <- function(data, specs, years, seed = 20260623) {
   do.call(rbind, results)
 }
 
-summarize_temporal_validation <- function(temporal_results) {
-  means <- aggregate(
-    cbind(RMSE, MAE, R2, EOY_RMSE, EOY_R2) ~ Model + Target + Method + Role,
+mark_temporal_fold_status <- function(temporal_results, failure_multiplier = 3) {
+  if (nrow(temporal_results) == 0) {
+    return(temporal_results)
+  }
+  naive_rows <- temporal_results[
+    temporal_results$Model == "Naive prior-year mean growth",
+    c("ValidationYear", "RMSE"),
+    drop = FALSE
+  ]
+  names(naive_rows)[names(naive_rows) == "RMSE"] <- "Naive_RMSE_Reference"
+  temporal_results <- merge(
     temporal_results,
-    mean
+    naive_rows,
+    by = "ValidationYear",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  temporal_results$Temporal_Fold_Failed <-
+    is.na(temporal_results$RMSE) |
+    !is.finite(temporal_results$RMSE) |
+    (
+      !is.na(temporal_results$Naive_RMSE_Reference) &
+        temporal_results$RMSE > failure_multiplier * temporal_results$Naive_RMSE_Reference
+    )
+  temporal_results$Temporal_Fold_Status <- ifelse(
+    temporal_results$Temporal_Fold_Failed,
+    "Unstable fold",
+    "Stable fold"
+  )
+  temporal_results
+}
+
+summarize_temporal_validation <- function(temporal_results) {
+  if (!"Temporal_Fold_Failed" %in% names(temporal_results)) {
+    temporal_results <- mark_temporal_fold_status(temporal_results)
+  }
+  metric_cols <- c("RMSE", "MAE", "R2", "EOY_RMSE", "EOY_R2")
+  for (metric_col in metric_cols) {
+    temporal_results[[paste0(metric_col, "_Stable")]] <- ifelse(
+      temporal_results$Temporal_Fold_Failed,
+      NA_real_,
+      temporal_results[[metric_col]]
+    )
+  }
+  mean_na <- function(x) {
+    value <- mean(x, na.rm = TRUE)
+    ifelse(is.nan(value), NA_real_, value)
+  }
+  sd_na <- function(x) {
+    value <- sd(x, na.rm = TRUE)
+    ifelse(is.nan(value), NA_real_, value)
+  }
+  means <- aggregate(
+    cbind(RMSE_Stable, MAE_Stable, R2_Stable, EOY_RMSE_Stable, EOY_R2_Stable) ~
+      Model + Target + Method + Role,
+    temporal_results,
+    mean_na
   )
   sds <- aggregate(
-    cbind(RMSE, MAE, R2) ~ Model + Target + Method + Role,
+    cbind(RMSE_Stable, MAE_Stable, R2_Stable) ~
+      Model + Target + Method + Role,
     temporal_results,
-    sd
+    sd_na
   )
   names(means) <- c(
     "Model", "Target", "Method", "Role", "Temporal_RMSE",
@@ -487,6 +542,23 @@ summarize_temporal_validation <- function(temporal_results) {
     "Temporal_MAE_SD", "Temporal_R2_SD"
   )
   summary <- merge(means, sds, by = c("Model", "Target", "Method", "Role"))
+  fold_counts <- aggregate(
+    cbind(
+      Temporal_Folds = rep(1, nrow(temporal_results)),
+      Stable_Temporal_Folds = as.integer(!temporal_results$Temporal_Fold_Failed),
+      Temporal_Failure_Count = as.integer(temporal_results$Temporal_Fold_Failed)
+    ) ~ Model + Target + Method + Role,
+    temporal_results,
+    sum
+  )
+  summary <- merge(summary, fold_counts, by = c("Model", "Target", "Method", "Role"))
+  summary$Temporal_Usable <- summary$Temporal_Failure_Count == 0 &
+    summary$Stable_Temporal_Folds > 0
+  summary$Temporal_Status <- ifelse(
+    summary$Temporal_Usable,
+    "Stable temporal validation",
+    paste0("Unstable temporal validation: ", summary$Temporal_Failure_Count, " failed fold(s)")
+  )
   summary[order(summary$Temporal_RMSE), ]
 }
 
@@ -612,6 +684,17 @@ make_latest_review <- function(data, group_vars, level, min_n, reps = 300,
   review[order(review$ReviewSignal), ]
 }
 
+public_decision_label <- function(decision) {
+  labels <- c(
+    "Intervention target" = "Priority review",
+    "Positive anomaly" = "Bright spot",
+    "Watch list" = "Watch",
+    "Shrunken intervention" = "Priority review",
+    "Shrunken positive" = "Bright spot"
+  )
+  ifelse(decision %in% names(labels), unname(labels[decision]), decision)
+}
+
 format_review_table <- function(review, id_cols) {
   target <- if ("Target" %in% names(review)) {
     review$Target
@@ -632,7 +715,7 @@ format_review_table <- function(review, id_cols) {
     ),
     P_value = format_p(review$P_Value),
     Q_value = format_p(review$Q_Value),
-    Decision = review$Decision,
+    Decision = public_decision_label(review$Decision),
     stringsAsFactors = FALSE
   )
   for (col in rev(id_cols)) {
@@ -1168,6 +1251,8 @@ add_stacked_candidate <- function(specs, name, member_names, complexity, folds =
       family = "Stacked validation ensemble",
       complexity = complexity,
       parameters = parameters,
+      selection_eligible = FALSE,
+      leakage_status = "Benchmark only: stacked model is reported but excluded from operations to keep process validation reproducible",
       tuned_parameters = paste0(
         "members=",
         paste(member_names, collapse = " + "),
@@ -1180,13 +1265,23 @@ add_stacked_candidate <- function(specs, name, member_names, complexity, folds =
 }
 
 select_operating_model <- function(model_comparison, temporal_tolerance = 0.01) {
+  temporal_usable <- if ("Temporal_Usable" %in% names(model_comparison)) {
+    model_comparison$Temporal_Usable
+  } else {
+    rep(TRUE, nrow(model_comparison))
+  }
   selection_candidates <- model_comparison[
     model_comparison$SelectionEligible &
       model_comparison$Role == "Operational candidate" &
-      model_comparison$Target == "Direct growth",
+      model_comparison$Target == "Direct growth" &
+      temporal_usable &
+      !is.na(model_comparison$Temporal_RMSE),
     ,
     drop = FALSE
   ]
+  if (nrow(selection_candidates) == 0) {
+    stop("No temporally stable eligible operating candidates were available.")
+  }
   best_temporal_rmse <- min(selection_candidates$Temporal_RMSE)
   finalist_candidates <- selection_candidates[
     selection_candidates$Temporal_RMSE <= best_temporal_rmse + temporal_tolerance,
@@ -1271,6 +1366,7 @@ candidate_specs <- c(
 
 cv_folds <- 5
 cv_repeats <- 2
+temporal_min_train_years <- 3
 
 cv_results <- run_repeated_model_cv(
   data = train_data,
@@ -1283,8 +1379,10 @@ cv_summary <- summarize_regression_cv(cv_results)
 temporal_results <- run_temporal_validation(
   data = train_data,
   specs = candidate_specs,
-  years = training_years
+  years = training_years,
+  min_train_years = temporal_min_train_years
 )
+temporal_results <- mark_temporal_fold_status(temporal_results)
 temporal_summary <- summarize_temporal_validation(temporal_results)
 names(candidate_specs) <- vapply(candidate_specs, `[[`, character(1), "name")
 candidate_fits <- lapply(candidate_specs, function(spec) {
@@ -1382,7 +1480,10 @@ run_nested_process_validation <- function(data, specs, years, metadata,
 
 process_candidate_specs <- candidate_specs[vapply(
   candidate_specs,
-  function(spec) spec$method %in% c("naive", "lm", "glmnet", "gam", "rpart"),
+  function(spec) {
+    spec$method %in% c("naive", "lm", "glmnet", "gam", "rpart", "gbm", "earth") &&
+      (spec$method == "naive" || isTRUE(spec$selection_eligible))
+  },
   logical(1)
 )]
 
@@ -1441,6 +1542,8 @@ model_comparison <- model_comparison[
     "Parameters", "CV_RMSE", "CV_RMSE_SD", "CV_MAE", "CV_R2", "CV_EOY_RMSE",
     "CV_EOY_R2", "Temporal_RMSE", "Temporal_RMSE_SD", "Temporal_MAE",
     "Temporal_R2", "Temporal_EOY_RMSE", "Temporal_EOY_R2",
+    "Temporal_Folds", "Stable_Temporal_Folds", "Temporal_Failure_Count",
+    "Temporal_Usable", "Temporal_Status",
     "Action_RMSE", "Action_MAE", "Action_R2", "Action_EOY_RMSE",
     "Action_EOY_R2", "Train_RMSE", "Train_MAE", "Train_R2",
     "Adj_R2", "AIC", "BIC", "Delta_Temporal_RMSE"
@@ -1810,7 +1913,7 @@ recommended_follow_up <- function(level, decision, target) {
 }
 
 future_priorities <- data.frame(
-  Priority = intervention_targets$Decision,
+  Priority = public_decision_label(intervention_targets$Decision),
   Target = intervention_targets$DisplayTarget,
   Mean_adjusted_gap = format_num(intervention_targets$AdjustedGap, 2),
   Review_signal = format_num(intervention_targets$ReviewSignal, 2),
@@ -1835,7 +1938,7 @@ future_priorities <- data.frame(
 )
 
 historical_section_evidence <- data.frame(
-  Priority = intervention_targets$Decision,
+  Priority = public_decision_label(intervention_targets$Decision),
   Target = intervention_targets$DisplayTarget,
   Section = ifelse("section_id" %in% names(intervention_targets), intervention_targets$section_id, ""),
   Teacher = ifelse("teacher_id" %in% names(intervention_targets), intervention_targets$teacher_id, ""),
@@ -1916,6 +2019,10 @@ diagnostics <- data.frame(
   stringsAsFactors = FALSE
 )
 
+format_temporal_metric <- function(value, usable, digits = 3) {
+  ifelse(usable, format_num(value, digits), "Unstable")
+}
+
 model_comparison_display <- data.frame(
   Model = model_comparison$Model,
   Selected = ifelse(model_comparison$Selected, "Yes", ""),
@@ -1932,10 +2039,29 @@ model_comparison_display <- data.frame(
   CV_MAE = format_num(model_comparison$CV_MAE, 3),
   CV_R2 = format_num(model_comparison$CV_R2, 3),
   CV_EOY_R2 = format_num(model_comparison$CV_EOY_R2, 3),
-  Temporal_RMSE = format_num(model_comparison$Temporal_RMSE, 3),
-  Temporal_SD = format_num(model_comparison$Temporal_RMSE_SD, 3),
-  Temporal_R2 = format_num(model_comparison$Temporal_R2, 3),
-  Temporal_EOY_R2 = format_num(model_comparison$Temporal_EOY_R2, 3),
+  Temporal_RMSE = format_temporal_metric(
+    model_comparison$Temporal_RMSE,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Temporal_SD = format_temporal_metric(
+    model_comparison$Temporal_RMSE_SD,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Temporal_R2 = format_temporal_metric(
+    model_comparison$Temporal_R2,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Temporal_EOY_R2 = format_temporal_metric(
+    model_comparison$Temporal_EOY_R2,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Temporal_Folds = model_comparison$Temporal_Folds,
+  Temporal_Failures = model_comparison$Temporal_Failure_Count,
+  Temporal_Status = model_comparison$Temporal_Status,
   Action_RMSE = format_num(model_comparison$Action_RMSE, 3),
   Action_MAE = format_num(model_comparison$Action_MAE, 3),
   Action_R2 = format_num(model_comparison$Action_R2, 3),
@@ -2330,6 +2456,87 @@ flag_stability$Status <- ifelse(
   ifelse(flag_stability$Stability >= flag_stability$Required_Stability, "Stable", "Directional")
 )
 
+review_label <- function(decision) {
+  labels <- c(
+    "Intervention target" = "Priority review",
+    "Positive anomaly" = "Bright spot",
+    "Watch list" = "Watch"
+  )
+  ifelse(decision %in% names(labels), unname(labels[decision]), decision)
+}
+
+evidence_read <- function(decision, stability_status, shrinkage_decision) {
+  if (decision == "Intervention target" &&
+      stability_status == "Stable" &&
+      shrinkage_decision == "Shrunken intervention") {
+    return("Strong priority signal")
+  }
+  if (decision == "Positive anomaly" &&
+      stability_status == "Stable" &&
+      shrinkage_decision == "Shrunken positive") {
+    return("Strong bright-spot signal")
+  }
+  if (decision %in% c("Intervention target", "Positive anomaly") &&
+      stability_status == "Stable") {
+    return("Stable signal; shrinkage tempers escalation")
+  }
+  if (decision %in% c("Intervention target", "Positive anomaly")) {
+    return("Directional signal; review context first")
+  }
+  if (decision == "Watch list" && stability_status == "Stable") {
+    return("Stable watch signal")
+  }
+  "Directional watch signal"
+}
+
+review_evidence_reconciliation <- do.call(rbind, lapply(seq_len(nrow(intervention_targets)), function(i) {
+  row <- intervention_targets[i, , drop = FALSE]
+  target_key <- if (row$Level == "Section") {
+    row$section_id
+  } else if (row$Level == "Course") {
+    row$course_id
+  } else {
+    row$teacher_id
+  }
+  flag_match <- flag_stability[
+    flag_stability$Level == row$Level &
+      flag_stability$Target == row$DisplayTarget,
+    ,
+    drop = FALSE
+  ]
+  shrinkage_match <- shrinkage_review[
+    shrinkage_review$Level == row$Level &
+      shrinkage_review$Target == target_key,
+    ,
+    drop = FALSE
+  ]
+  stability_status <- if (nrow(flag_match) > 0) flag_match$Status[1] else "Not estimated"
+  stability_value <- if (nrow(flag_match) > 0) flag_match$Stability[1] else NA_real_
+  shrinkage_decision <- if (nrow(shrinkage_match) > 0) {
+    shrinkage_match$Decision[1]
+  } else {
+    "Not estimated"
+  }
+  shrinkage_gap <- if (nrow(shrinkage_match) > 0) {
+    shrinkage_match$ShrunkenGap[1]
+  } else {
+    NA_real_
+  }
+  data.frame(
+    Level = row$Level,
+    Target = row$DisplayTarget,
+    N = row$N,
+    Review = review_label(row$Decision),
+    AdjustedGap = row$AdjustedGap,
+    BootstrapStatus = stability_status,
+    BootstrapStability = stability_value,
+    ShrinkageDecision = shrinkage_decision,
+    ShrunkenGap = shrinkage_gap,
+    EvidenceRead = evidence_read(row$Decision, stability_status, shrinkage_decision),
+    stringsAsFactors = FALSE
+  )
+}))
+
 run_null_permutation_benchmark <- function(spec, train_data, action_data,
                                            reps = 5, seed = 20260623) {
   set.seed(seed)
@@ -2448,12 +2655,29 @@ if (nrow(shrinkage_review) > 0) {
     ),
     P_value = format_p(shrinkage_review$P_Value),
     Q_value = format_p(shrinkage_review$Q_Value),
-    Decision = shrinkage_review$Decision,
+    Decision = public_decision_label(shrinkage_review$Decision),
     stringsAsFactors = FALSE
   )
 } else {
   shrinkage_review_display <- empty_shrinkage_review_display()
 }
+
+review_evidence_display <- data.frame(
+  Level = review_evidence_reconciliation$Level,
+  Target = review_evidence_reconciliation$Target,
+  N = review_evidence_reconciliation$N,
+  Review = review_evidence_reconciliation$Review,
+  Adjusted_gap = format_num(review_evidence_reconciliation$AdjustedGap, 2),
+  Bootstrap_stability = format_pct(review_evidence_reconciliation$BootstrapStability, 0),
+  Bootstrap_status = review_evidence_reconciliation$BootstrapStatus,
+  Shrinkage_gap = format_num(review_evidence_reconciliation$ShrunkenGap, 2),
+  Shrinkage_decision = public_decision_label(review_evidence_reconciliation$ShrinkageDecision),
+  Evidence_read = review_evidence_reconciliation$EvidenceRead,
+  stringsAsFactors = FALSE
+)
+
+flag_stability_display <- flag_stability
+flag_stability_display$Decision <- public_decision_label(flag_stability_display$Decision)
 
 final_metrics <- data.frame(
   Metric = c(
@@ -2498,7 +2722,11 @@ final_metrics <- data.frame(
     selected_comparison$Method,
     selected_comparison$Family,
     selected_comparison$TunedParameters,
-    "Lowest rolling-origin temporal RMSE among eligible direct-growth candidates; repeated-CV RMSE is the tie-breaker within 0.01 points",
+    paste0(
+      "Lowest stable rolling-origin temporal RMSE among eligible direct-growth candidates; ",
+      "temporal folds require at least ", temporal_min_train_years,
+      " prior completed years, and repeated-CV RMSE is the tie-breaker within 0.01 points"
+    ),
     format(nrow(train_data), big.mark = ","),
     format(nrow(action_data), big.mark = ","),
     paste(training_years, collapse = ", "),
@@ -2530,6 +2758,21 @@ final_metrics <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
+
+best_stable_row <- function(rows) {
+  stable_rows <- rows[
+    rows$Temporal_Usable & !is.na(rows$Temporal_RMSE),
+    ,
+    drop = FALSE
+  ]
+  if (nrow(stable_rows) > 0 && any(stable_rows$Selected)) {
+    return(stable_rows[stable_rows$Selected, , drop = FALSE][1, , drop = FALSE])
+  }
+  if (nrow(stable_rows) > 0) {
+    return(stable_rows[which.min(stable_rows$Temporal_RMSE), , drop = FALSE])
+  }
+  rows[which.min(rows$Action_RMSE), , drop = FALSE]
+}
 
 family_review_spec <- data.frame(
   Family = c(
@@ -2614,15 +2857,13 @@ shape_review <- do.call(rbind, lapply(seq_len(nrow(family_review_spec)), functio
       stringsAsFactors = FALSE
     ))
   }
-  if (any(rows$Selected)) {
-    best_row <- rows[rows$Selected, , drop = FALSE][1, , drop = FALSE]
-  } else {
-    best_row <- rows[which.min(rows$Temporal_RMSE), , drop = FALSE]
-  }
+  best_row <- best_stable_row(rows)
   decision <- if (best_row$Role == "Excluded leakage benchmark") {
     "Excluded from operating selection; persistent IDs would contaminate future review signals."
   } else if (any(rows$Selected)) {
     "Selected operating family."
+  } else if (!isTRUE(best_row$Temporal_Usable)) {
+    "Compared; temporal validation was unstable, so this family is not a credible operating baseline."
   } else {
     "Compared; not selected by temporal expected-gain RMSE."
   }
@@ -2631,7 +2872,7 @@ shape_review <- do.call(rbind, lapply(seq_len(nrow(family_review_spec)), functio
     Representative_model = best_row$Model,
     Why_tested = family_review_spec$Why_tested[i],
     Decision = decision,
-    Temporal_RMSE = format_num(best_row$Temporal_RMSE, 3),
+    Temporal_RMSE = format_temporal_metric(best_row$Temporal_RMSE, best_row$Temporal_Usable, 3),
     Action_RMSE = format_num(best_row$Action_RMSE, 3),
     stringsAsFactors = FALSE
   )
@@ -2646,10 +2887,28 @@ model_search_grid <- data.frame(
   Complexity = model_comparison$Complexity,
   Tuned_parameters = model_comparison$TunedParameters,
   Selection_eligible = model_comparison$SelectionEligible,
-  Temporal_RMSE = format_num(model_comparison$Temporal_RMSE, 3),
-  Delta_temporal_RMSE = format_num(model_comparison$Delta_Temporal_RMSE, 3),
-  Temporal_MAE = format_num(model_comparison$Temporal_MAE, 3),
-  Temporal_R2 = format_num(model_comparison$Temporal_R2, 3),
+  Temporal_RMSE = format_temporal_metric(
+    model_comparison$Temporal_RMSE,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Delta_temporal_RMSE = format_temporal_metric(
+    model_comparison$Delta_Temporal_RMSE,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Temporal_MAE = format_temporal_metric(
+    model_comparison$Temporal_MAE,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Temporal_R2 = format_temporal_metric(
+    model_comparison$Temporal_R2,
+    model_comparison$Temporal_Usable,
+    3
+  ),
+  Temporal_status = model_comparison$Temporal_Status,
+  Temporal_failed_folds = model_comparison$Temporal_Failure_Count,
   CV_RMSE = format_num(model_comparison$CV_RMSE, 3),
   CV_RMSE_SD = format_num(model_comparison$CV_RMSE_SD, 3),
   CV_MAE = format_num(model_comparison$CV_MAE, 3),
@@ -2666,29 +2925,26 @@ model_search_grid <- data.frame(
 )
 
 family_summary <- do.call(rbind, lapply(split(model_comparison, model_comparison$Family), function(rows) {
-  best <- if (any(rows$Selected)) {
-    rows[rows$Selected, , drop = FALSE][1, , drop = FALSE]
-  } else {
-    rows[which.min(rows$Temporal_RMSE), , drop = FALSE]
-  }
+  best <- best_stable_row(rows)
   data.frame(
     Family = best$Family,
     Candidates = nrow(rows),
     Eligible_candidates = sum(rows$SelectionEligible),
     Best_model = best$Model,
     Selected_family = ifelse(any(rows$Selected), "Yes", ""),
-    Best_temporal_RMSE = format_num(best$Temporal_RMSE, 3),
-    Best_delta_RMSE = format_num(best$Delta_Temporal_RMSE, 3),
-    Best_temporal_MAE = format_num(best$Temporal_MAE, 3),
-    Best_temporal_R2 = format_num(best$Temporal_R2, 3),
+    Best_temporal_RMSE = format_temporal_metric(best$Temporal_RMSE, best$Temporal_Usable, 3),
+    Best_delta_RMSE = format_temporal_metric(best$Delta_Temporal_RMSE, best$Temporal_Usable, 3),
+    Best_temporal_MAE = format_temporal_metric(best$Temporal_MAE, best$Temporal_Usable, 3),
+    Best_temporal_R2 = format_temporal_metric(best$Temporal_R2, best$Temporal_Usable, 3),
     Best_latest_RMSE = format_num(best$Action_RMSE, 3),
     Best_latest_R2 = format_num(best$Action_R2, 3),
+    Temporal_status = best$Temporal_Status,
     Best_tuned_parameters = best$TunedParameters,
     stringsAsFactors = FALSE
   )
 }))
 family_summary <- family_summary[
-  order(as.numeric(family_summary$Best_temporal_RMSE)),
+  order(suppressWarnings(as.numeric(family_summary$Best_temporal_RMSE))),
   ,
   drop = FALSE
 ]
@@ -2713,7 +2969,11 @@ selection_rationale <- data.frame(
   ),
   Rationale = c(
     "Directly predict BOY/EOY score gain because growth is the performance metric used to evaluate actual class outcomes.",
-    "Rolling-origin temporal RMSE tests whether earlier years generalize to a later year without training on future records.",
+    paste0(
+      "Rolling-origin temporal RMSE tests whether earlier years generalize to a later year without training on future records; ",
+      "candidate-selection folds require at least ", temporal_min_train_years,
+      " prior completed years."
+    ),
     "When candidates are within 0.01 points of the best rolling-origin RMSE, repeated-CV RMSE chooses the more stable baseline without looking at the latest action year.",
     selected_model_name,
     selected_comparison$Family,
@@ -2749,7 +3009,8 @@ write.csv(locked_holdout_validation, file.path("reports", "locked_holdout_valida
 write.csv(model_validity_targets, file.path("reports", "model_validity_targets.csv"), row.names = FALSE)
 write.csv(feature_importance, file.path("reports", "feature_importance.csv"), row.names = FALSE)
 write.csv(feature_stability, file.path("reports", "feature_stability.csv"), row.names = FALSE)
-write.csv(flag_stability, file.path("reports", "flag_stability.csv"), row.names = FALSE)
+write.csv(flag_stability_display, file.path("reports", "flag_stability.csv"), row.names = FALSE)
+write.csv(review_evidence_display, file.path("reports", "review_evidence_reconciliation.csv"), row.names = FALSE)
 write.csv(null_permutation_benchmark, file.path("reports", "null_permutation_benchmark.csv"), row.names = FALSE)
 write.csv(model_signal_ceiling, file.path("reports", "model_signal_ceiling.csv"), row.names = FALSE)
 write.csv(model_bootstrap_validation, file.path("reports", "model_bootstrap_validation.csv"), row.names = FALSE)
@@ -2785,6 +3046,7 @@ saveRDS(
     feature_importance = feature_importance,
     feature_stability = feature_stability,
     flag_stability = flag_stability,
+    review_evidence_reconciliation = review_evidence_reconciliation,
     null_permutation_benchmark = null_permutation_benchmark,
     process_validation = process_validation,
     model_signal_ceiling = model_signal_ceiling,

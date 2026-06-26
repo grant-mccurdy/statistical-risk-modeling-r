@@ -2,7 +2,7 @@
 
 Public-safe education analytics project in R that evaluates beginning-of-year
 to end-of-year assessment improvement and turns assessment history into a
-future-facing statistical decision system. The report answers a stakeholder
+future-facing statistical review system. The report answers a stakeholder
 question first: which teacher, course, and section patterns in the latest
 completed year deserve review before the next assessment cycle after accounting
 for starting performance, readiness, attendance, course track, grade level, and
@@ -60,9 +60,11 @@ public-safety notes.
   null-permutation benchmarking
 - Latest-year action evaluation, bootstrap intervals, feature diagnostics, and
   residual diagnostics
-- Reliability-weighted teacher/course/section decision flags
+- Reliability-weighted teacher/course/section review priorities
 - Mixed-effects shrinkage review for teacher/course/section residual patterns
 - BH-adjusted q-values for multiple-review control
+- Evidence reconciliation across adjusted gaps, bootstrap stability, shrinkage,
+  and multiple-review control
 - Teacher/course review-priority views for instructional planning
 - Sensitivity checks comparing raw and adjusted section rankings
 - Executive-facing communication with public-safety guardrails
@@ -163,6 +165,7 @@ The generated evidence packet includes:
 - `reports/growth_final_metrics.csv`
 - `reports/shrinkage_status.csv`
 - `reports/shrinkage_review.csv`
+- `reports/review_evidence_reconciliation.csv`
 - `reports/intervention_targets.csv`
 - `reports/latest_teacher_review.csv`
 - `reports/latest_course_review.csv`

@@ -20,6 +20,7 @@ required_tables <- c(
   file.path("reports", "feature_importance.csv"),
   file.path("reports", "feature_stability.csv"),
   file.path("reports", "flag_stability.csv"),
+  file.path("reports", "review_evidence_reconciliation.csv"),
   file.path("reports", "null_permutation_benchmark.csv"),
   file.path("reports", "model_signal_ceiling.csv"),
   file.path("reports", "model_bootstrap_validation.csv"),
@@ -102,6 +103,7 @@ artifact_ref <- function(path) {
     "feature_importance.csv" = "feature importance",
     "feature_stability.csv" = "feature stability",
     "flag_stability.csv" = "flag stability",
+    "review_evidence_reconciliation.csv" = "evidence reconciliation",
     "null_permutation_benchmark.csv" = "null benchmark",
     "model_signal_ceiling.csv" = "signal ceiling",
     "model_bootstrap_validation.csv" = "bootstrap validation",
@@ -142,6 +144,15 @@ pretty_course <- function(course) {
 
 pretty_target <- function(target) {
   ifelse(grepl("^MATH-", target), pretty_course(target), target)
+}
+
+short_evidence_read <- function(x) {
+  x <- as.character(x)
+  x[x == "Directional signal; review context first"] <- "Directional; context review"
+  x[x == "Stable signal; shrinkage tempers escalation"] <- "Stable; shrinkage tempers"
+  x[x == "Stable watch signal"] <- "Stable watch"
+  x[x == "Directional watch signal"] <- "Directional watch"
+  x
 }
 
 short_model_name <- function(model) {
@@ -266,7 +277,7 @@ compact_review <- function(df, id_col, n = 8) {
     target <- short_section_label(target)
   }
   decision_label <- c(
-    "Intervention target" = "Intervention",
+    "Intervention target" = "Priority review",
     "Positive anomaly" = "Bright spot",
     "Watch list" = "Watch"
   )
@@ -301,7 +312,7 @@ compact_intervention_targets <- function(df, n = 14) {
   target[df$Level == "Section"] <- sub(" \\| .*", "", target[df$Level == "Section"])
   target[df$Level == "Section"] <- short_section_label(target[df$Level == "Section"])
   decision_label <- c(
-    "Intervention target" = "Intervention",
+    "Intervention target" = "Priority review",
     "Positive anomaly" = "Bright spot",
     "Watch list" = "Watch"
   )
@@ -361,7 +372,7 @@ compact_shrinkage_review <- function(df, n = 12) {
   target[flagged$Level == "Course"] <- pretty_course(target[flagged$Level == "Course"])
   target[flagged$Level == "Section"] <- short_section_label(target[flagged$Level == "Section"])
   decision_label <- c(
-    "Shrunken intervention" = "Intervention",
+    "Shrunken intervention" = "Priority review",
     "Shrunken positive" = "Bright spot",
     "Monitor" = "Monitor",
     "Insufficient sample" = "Small n",
@@ -405,6 +416,7 @@ model_validity_targets <- read_display_csv(file.path("reports", "model_validity_
 feature_importance <- read_display_csv(file.path("reports", "feature_importance.csv"))
 feature_stability <- read_display_csv(file.path("reports", "feature_stability.csv"))
 flag_stability <- read_display_csv(file.path("reports", "flag_stability.csv"))
+review_evidence <- read_display_csv(file.path("reports", "review_evidence_reconciliation.csv"))
 null_permutation_benchmark <- read_display_csv(file.path("reports", "null_permutation_benchmark.csv"))
 model_signal_ceiling <- read_display_csv(file.path("reports", "model_signal_ceiling.csv"))
 bootstrap_validation <- read_display_csv(file.path("reports", "model_bootstrap_validation.csv"))
@@ -427,15 +439,17 @@ names(model_comparison) <- c(
   "Model", "Selected", "Role", "Target", "Method", "Family", "Complexity",
   "Tuned", "Eligible", "Params", "CV RMSE", "CV SD", "CV MAE", "CV R2",
   "CV EOY R2", "Temporal RMSE", "Temporal SD", "Temporal R2",
-  "Temporal EOY R2", "Latest RMSE", "Latest MAE", "Latest R2",
+  "Temporal EOY R2", "Temporal folds", "Temporal failures", "Temporal status",
+  "Latest RMSE", "Latest MAE", "Latest R2",
   "Latest EOY R2", "Train R2", "Adj R2", "AIC", "BIC", "Delta"
 )
+profile$Measure[profile$Measure == "Unique simulated teachers"] <- "Unique public-safe teacher identifiers"
 names(model_strength) <- c("Measure", "Value")
 names(family_summary) <- c(
   "Family", "Candidates", "Eligible", "Best model", "Selected family",
   "Best temporal RMSE", "Best delta RMSE", "Best temporal MAE",
   "Best temporal R2", "Best latest RMSE", "Best latest R2",
-  "Best tuned parameters"
+  "Temporal status", "Best tuned parameters"
 )
 names(selection_rationale) <- c("Decision", "Rationale")
 names(shape_review) <- c(
@@ -452,6 +466,10 @@ names(feature_stability) <- c("Feature", "Positive importance", "Top-quartile im
 names(flag_stability) <- c(
   "Level", "Target", "N", "Adjusted gap", "Decision", "Stability",
   "Required stability", "Status"
+)
+names(review_evidence) <- c(
+  "Level", "Target", "N", "Review", "Adjusted gap", "Bootstrap stability",
+  "Bootstrap status", "Shrinkage gap", "Shrinkage decision", "Evidence read"
 )
 names(locked_holdout_validation) <- c("Metric", "Value", "Display value")
 names(model_signal_ceiling) <- c("Diagnostic", "Value", "Display value")
@@ -492,6 +510,8 @@ selected_tuned_text <- if (selected_model == "Growth ensemble balanced") {
   "an equal-weight blend of gradient boosting, GAM, elastic-net, and history/composition growth predictions"
 } else if (selected_model == "Growth ensemble nonlinear weighted") {
   "a GBM-weighted blend of nonlinear, regularized, and history/composition growth predictions"
+} else if (selected_model == "Growth ensemble discovery weighted") {
+  "a validation-weighted blend of boosting, ranger forest, MARS, GAM, regularized regression, and engineered-feature predictions"
 } else if (selected_model == "Growth stacked ensemble") {
   "an out-of-fold learned blend of nonlinear, regularized, and history/composition growth predictions"
 } else {
@@ -501,7 +521,7 @@ selection_rule <- metric_value("Selection rule")
 candidate_count <- metric_value("Candidate models tested")
 included_pairs <- profile_value("Included paired records")
 section_groups <- profile_value("Unique section-year groups")
-teachers <- profile_value("Unique simulated teachers")
+teachers <- profile_value("Unique public-safe teacher identifiers")
 training_records <- metric_value("Training paired records")
 action_records <- metric_value("Latest-year action paired records")
 training_years <- metric_value("Training years")
@@ -688,6 +708,45 @@ flag_stability_report <- flag_stability_report[
   drop = FALSE
 ]
 
+review_evidence_report <- review_evidence[
+  review_evidence$Review %in% c("Priority review", "Bright spot", "Watch"),
+  ,
+  drop = FALSE
+]
+review_evidence_report$PriorityOrder <- decision_priority(c(
+  "Priority review" = "Intervention target",
+  "Bright spot" = "Positive anomaly",
+  "Watch" = "Watch list"
+)[review_evidence_report$Review])
+review_evidence_report$GapValue <- as_report_num(review_evidence_report$`Adjusted gap`)
+review_evidence_report <- review_evidence_report[
+  order(review_evidence_report$PriorityOrder, review_evidence_report$GapValue),
+  ,
+  drop = FALSE
+]
+review_evidence_report <- top_n(review_evidence_report, 10)
+review_evidence_report$Target[review_evidence_report$Level == "Course"] <-
+  pretty_course(review_evidence_report$Target[review_evidence_report$Level == "Course"])
+review_evidence_report$Target[review_evidence_report$Level == "Section"] <-
+  sub(" / .*", "", review_evidence_report$Target[review_evidence_report$Level == "Section"])
+review_evidence_report$Target[review_evidence_report$Level == "Section"] <-
+  short_section_label(review_evidence_report$Target[review_evidence_report$Level == "Section"])
+review_evidence_report$`Adjusted gap` <- signed_text(review_evidence_report$`Adjusted gap`, 2)
+review_evidence_report$`Shrinkage gap` <- signed_text(review_evidence_report$`Shrinkage gap`, 2)
+review_evidence_report$`Evidence read` <- short_evidence_read(review_evidence_report$`Evidence read`)
+review_evidence_report <- review_evidence_report[
+  ,
+  c(
+    "Review", "Level", "Target", "N", "Adjusted gap",
+    "Bootstrap status", "Shrinkage decision", "Evidence read"
+  ),
+  drop = FALSE
+]
+names(review_evidence_report) <- c(
+  "Review", "Slice", "Target", "N", "Gap",
+  "Stability", "Shrinkage", "Evidence"
+)
+
 holdout_report <- locked_holdout_validation[
   ,
   c("Metric", "Display value"),
@@ -721,10 +780,11 @@ model_comparison_compact$Interpretation <- ifelse(
     )
   )
 )
-model_rows <- unique(c(
-  which(model_comparison_compact$Eligible == "Yes")[seq_len(min(7, sum(model_comparison_compact$Eligible == "Yes")))],
-  which(model_comparison$Role == "Excluded leakage benchmark")[1]
-))
+stable_eligible_rows <- which(
+  model_comparison_compact$Eligible == "Yes" &
+    model_comparison_compact$`Temporal status` == "Stable temporal validation"
+)
+model_rows <- stable_eligible_rows[seq_len(min(8, length(stable_eligible_rows)))]
 model_rows <- model_rows[!is.na(model_rows)]
 model_comparison_report <- model_comparison_compact[
   model_rows,
@@ -946,7 +1006,7 @@ report_lines <- c(
   "",
   paste0(
     "Use prior completed assessment years to build and validate an expected-growth baseline, then apply that baseline to the latest completed year, **", action_year,
-    "**, to identify teacher, course, and section patterns that may deserve review before the next cycle. ",
+    "**, to identify teacher, course, and section patterns that should receive priority review before the next cycle. ",
     "The stakeholder metric is **BOY/EOY score gain**: end-of-year score minus beginning-of-year score for the same student record."
   ),
   "",
@@ -997,16 +1057,13 @@ report_lines <- c(
     "** for course means, and **", teacher_mean_r2, "** for teacher means."
   ),
   "",
-  "The workflow uses the direct-growth model to create a fair expected-growth baseline, then identifies aggregate teacher, course, and section residuals with bootstrap uncertainty checks.",
+  "The workflow uses the direct-growth model to create a fair expected-growth baseline, then identifies aggregate teacher, course, and section residuals with bootstrap uncertainty checks and a mixed-effects shrinkage review.",
   "",
   markdown_table(decision_counts),
   "",
   markdown_table(front_priority_report),
   "",
-  paste0(
-    "Bright spots, watch-list rows, and the full decision table are generated as ",
-    artifact_ref("reports/intervention_targets.csv"), "."
-  ),
+  "The labels are review priorities, not personnel ratings or automated decisions.",
   "",
   "## Plain-English Method",
   "",
@@ -1016,7 +1073,7 @@ report_lines <- c(
   "4. Hold out the latest completed year as the action-year review period.",
   "5. Score latest-year records against the prior-year baseline.",
   "6. Aggregate observed-minus-expected growth by teacher, course, and section.",
-  "7. Flag review targets when the gap is large enough to matter and the uncertainty check supports follow-up.",
+  "7. Assign review-priority labels when the gap is large enough to matter and the uncertainty checks support follow-up.",
   "",
   paste0(
     "This design separates the prediction problem from the decision problem. ",
@@ -1031,7 +1088,7 @@ report_lines <- c(
   paste0("4. The model search tested ", candidate_count, " candidate baselines across parametric, nonlinear, ensemble, and excluded ID-benchmark families."),
   paste0("5. The selected direct-growth baseline has temporal expected-gain RMSE ", temporal_gain_rmse, ", temporal MAE ", temporal_gain_mae, ", latest-year RMSE ", latest_gain_rmse, ", and latest-year MAE ", latest_gain_mae, "."),
   "6. The individual gain R-squared is a supporting model-quality measure; the review decision is based on group-level observed-minus-expected growth.",
-  "7. Teacher, course, and section flags are review priorities for planning and follow-up.",
+  "7. Teacher, course, and section flags are review priorities for planning and follow-up, not causal claims or personnel ratings.",
   "",
   "## Data Audit",
   "",
@@ -1044,7 +1101,7 @@ report_lines <- c(
   paste0(
     "The model discovery system used ", training_records, " prior-year pairs and held out ",
     action_records, " latest-year pairs for action-year evaluation. ",
-    "The primary selection metric is rolling-origin temporal expected-gain RMSE, not latest-year performance, so each validation year is treated like the future."
+    "The primary selection metric is stable rolling-origin temporal expected-gain RMSE, not latest-year performance, so each validation year is treated like the future. Candidate-selection folds require at least three prior completed years."
   ),
   "",
   selection_result_text,
@@ -1054,7 +1111,8 @@ report_lines <- c(
   "The model-search guardrails were:",
   "",
   "- Use direct BOY/EOY score gain as the operating target because that is the stakeholder performance metric.",
-  "- Select by rolling-origin temporal RMSE so the baseline is judged on future-facing generalization.",
+  "- Select by stable rolling-origin temporal RMSE so the baseline is judged on future-facing generalization after enough history exists.",
+  "- Mark candidates with failed temporal folds as unstable rather than treating implausible extrapolations as credible model comparisons.",
   "- Use repeated-CV RMSE as the tie-breaker when rolling-origin RMSE differs by less than 0.01 points.",
   "- Keep teacher, course, and section identifiers out of the operating baseline because those are the groups being reviewed.",
   "- Use feature engineering only when the feature is available at BOY or from prior completed years.",
@@ -1072,7 +1130,7 @@ report_lines <- c(
   "",
   "<!-- PDF_PAGE_BREAK -->",
   "",
-  "The table below shows the strongest candidate baselines tested. The selected model was chosen by rolling-origin validation, not by whichever model looked best on the latest year. The excluded ID benchmark row is shown for transparency but is not eligible because it includes teacher/course identifiers that are part of the review layer.",
+  "The table below shows the strongest stable candidate baselines tested. The selected model was chosen by rolling-origin validation, not by whichever model looked best on the latest year. Excluded ID benchmarks and unstable temporal candidates remain in the generated artifacts, but they are not eligible operating baselines.",
   "",
   markdown_table(model_comparison_report),
   "",
@@ -1127,39 +1185,24 @@ report_lines <- c(
   "## Latest-Year Review Targets",
   "",
   paste0(
-    "The latest-year review layer compares observed gain with expected gain for ",
-    latest_section_groups, " section groups. ",
-    "The decision labels use a practical review threshold: material gap, bootstrap interval direction, and BH-adjusted q-value for multiple-review control."
+  "The latest-year review layer compares observed gain with expected gain for ",
+  latest_section_groups, " section groups. ",
+  "The review labels use a practical threshold, bootstrap interval direction, BH-adjusted q-values for multiple-review control, flag stability, and a mixed-effects shrinkage check."
   ),
   "",
-  "**Teacher review**",
-  "",
-  markdown_table(teacher_priority),
-  "",
-  "**Course review**",
-  "",
-  markdown_table(course_priority),
-  "",
-  "**Section evidence**",
-  "",
-  markdown_table(section_priority),
+  markdown_table(review_evidence_report),
   "",
   paste0(
-    "Full review tables: ",
+    "Detailed review tables: ",
     artifact_ref("reports/latest_teacher_review.csv"),
     ", ",
     artifact_ref("reports/latest_course_review.csv"),
     ", and ",
-    artifact_ref("reports/latest_section_review.csv"), "."
+    artifact_ref("reports/latest_section_review.csv"), ". Reconciled evidence: ",
+    artifact_ref("reports/review_evidence_reconciliation.csv"), "."
   ),
   "",
-  "A second review layer fits a mixed-effects shrinkage model on the latest-year residuals. It estimates teacher, course, and section effects at the same time and pulls noisier small-group estimates toward zero, so the strongest flags are less likely to be one-off small-section artifacts.",
-  "",
-  markdown_table(shrinkage_report),
-  "",
-  "Flag stability estimates how often a slice remains beyond the practical one-point gap threshold under bootstrap resampling. Directional rows should be reviewed with context; stable rows have stronger evidence for action.",
-  "",
-  markdown_table(flag_stability_report),
+  "The evidence label reconciles the practical bootstrap flag with the more conservative shrinkage model. When shrinkage tempers a signal, the correct action is context review and support planning rather than escalation.",
   "",
   paste0(
     "Shrinkage artifacts: ",
@@ -1242,9 +1285,9 @@ report_lines <- c(
   "",
   "## Conclusion",
   "",
-  "The project should be read as a statistical decision-support system. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline at the group level, quantify uncertainty by slice, and translate the evidence into review priorities.",
+  "The project should be read as a statistical review-priority system. The strongest business value is the workflow: choose a validated expected-growth baseline, compare latest actual growth to that baseline at the group level, quantify uncertainty by slice, reconcile competing evidence checks, and translate the evidence into review priorities.",
   "",
-  "The recommended stakeholder action is to review the flagged teacher, course, and section patterns before the next assessment cycle. Priority targets deserve support or investigation; positive anomalies deserve study for transferable practices; watch-list rows deserve context review before escalation.",
+  "The recommended stakeholder action is to review the flagged teacher, course, and section patterns before the next assessment cycle. Priority-review rows deserve support-oriented investigation; bright spots deserve study for transferable practices; watch-list rows deserve context review before escalation.",
   "",
   "The important limitation is that the data are public-safe and generalized from an assessment workflow. The outputs demonstrate the analysis pattern and should be interpreted as portfolio evidence rather than operational decisions about real students or staff.",
   "",
@@ -1263,7 +1306,7 @@ executive_lines <- c(
   "# Executive Brief: Assessment Growth and Section Performance",
   "",
   paste0(
-    "**Purpose:** use prior completed assessment years to build and validate an expected-growth baseline, then apply it to the latest completed year for teacher, course, and section review before the next cycle."
+    "**Purpose:** use prior completed assessment years to build and validate an expected-growth baseline, then apply it to the latest completed year for teacher, course, and section priority review before the next cycle."
   ),
   "",
   paste0(
@@ -1289,12 +1332,12 @@ executive_lines <- c(
   ),
   "",
   paste0(
-    "**Decision logic:** observed gain minus expected gain, reviewed by teacher, course, and section with bootstrap intervals and BH-adjusted q-values."
+    "**Review logic:** observed gain minus expected gain, reviewed by teacher, course, and section with bootstrap intervals, BH-adjusted q-values, flag stability, and mixed-effects shrinkage."
   ),
   "",
   markdown_table(priority_target_report),
   "",
-  "**Appropriate use:** the outputs are review priorities for planning and follow-up."
+  "**Appropriate use:** the outputs are review priorities for planning and follow-up, not ratings or automated personnel decisions."
 )
 
 writeLines(executive_lines, file.path("reports", "executive_brief.md"))
@@ -1335,7 +1378,7 @@ model_card_lines <- c(
   "",
   "## Decision Layer",
   "",
-  "Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, mixed-effects shrinkage review, and decision labels. The labels are review priorities for planning and follow-up.",
+  "Latest-year teacher, course, and section residuals are summarized with bootstrap intervals, p-values, BH-adjusted q-values, reliability weighting, flag stability, mixed-effects shrinkage review, and priority labels. The labels are review priorities for planning and follow-up, not automated ratings.",
   "",
   "## Monitoring Recommendations",
   "",

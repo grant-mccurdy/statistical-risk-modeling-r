@@ -49,8 +49,12 @@ Other useful report files:
 - `shrinkage_status.csv`: mixed-effects shrinkage review status.
 - `shrinkage_review.csv`: partially pooled teacher/course/section residual
   review table.
-- `intervention_targets.csv`: latest-year teacher, course, and section review
-  targets with intervals, p-values, q-values, and decision labels.
+- `review_evidence_reconciliation.csv`: primary latest-year review packet that
+  reconciles adjusted gaps, bootstrap stability, shrinkage, and multiple-review
+  control into stakeholder-readable evidence labels.
+- `intervention_targets.csv`: compatibility artifact for latest-year teacher,
+  course, and section review targets with intervals, p-values, q-values, and
+  decision labels.
 - `latest_teacher_review.csv`: latest-year teacher-level review table.
 - `latest_course_review.csv`: latest-year course-level review table.
 - `latest_section_review.csv`: latest-year section-level review table.
@@ -60,7 +64,7 @@ Other useful report files:
 - `model_dependency_status.csv`: optional modeling packages used or skipped.
 - `section_ttests.csv`: raw section-year BOY/EOY improvement tests.
 - `section_adjusted_signals.csv`: adjusted section-year growth signals.
-- `teacher_growth_summary.csv`: simulated teacher-level summary view.
+- `teacher_growth_summary.csv`: public-safe teacher-level summary view.
 - `course_growth_summary.csv`: course-level summary view.
 - `growth_diagnostics.csv`: latest-year model and residual diagnostics.
 - `growth_sensitivity.csv`: raw-vs-adjusted ranking sensitivity checks.
