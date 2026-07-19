@@ -1,5 +1,7 @@
 # Assessment Growth and Section Performance Analytics in R
 
+[![Validate project](https://github.com/grant-mccurdy/statistical-risk-modeling-r/actions/workflows/validate.yml/badge.svg)](https://github.com/grant-mccurdy/statistical-risk-modeling-r/actions/workflows/validate.yml)
+
 Public-safe education analytics project in R that evaluates beginning-of-year
 to end-of-year assessment improvement and turns assessment history into a
 future-facing statistical review system. The report answers a stakeholder
@@ -15,8 +17,7 @@ business analytics, BI, education analytics, and data strategy portfolio review:
 the emphasis is decision framing, BOY/EOY improvement analysis, adjusted growth
 modeling, future review signals, validation, and clear communication.
 
-Portfolio page:
-https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html
+**[Open the portfolio evidence brief](https://grant-mccurdy.github.io/projects/statistical-risk-modeling-r.html)**
 
 ## Primary Preview
 
@@ -233,3 +234,11 @@ transcripts, raw private coursework files, real student-identifiable data, real
 patient data, credentials, or private exports.
 
 See `docs/public-safety.md` for the release notes and exclusion policy.
+
+## Licensing
+
+- Code is available under the [MIT License](LICENSE).
+- Original documentation and generated visual content are available under [CC BY 4.0](LICENSE-CONTENT.md).
+- Original synthetic datasets are available under [CC BY 4.0](LICENSE-DATA.md).
+
+Third-party materials, trademarks, personal likenesses, and acquired source material are excluded unless explicitly stated otherwise.
